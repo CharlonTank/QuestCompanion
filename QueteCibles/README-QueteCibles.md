@@ -23,7 +23,7 @@ Addon World of Warcraft (beta Classic 1.60) qui affiche la liste des mobs de tes
 | `/cibles add Nom` | Ajouter une cible manuelle |
 | `/cibles del Nom` / `/cibles clear` | Retirer une / toutes les cibles manuelles |
 | `/cibles finis` | Afficher aussi les objectifs terminés (en gris) |
-| `/cibles marque` | Activer / couper le marqueur de raid posé au clic sur une cible |
+| `/cibles marque` | Activer / couper les icônes affichées au-dessus des mobs de la liste |
 | `/cibles export` | Ouvrir la fenêtre d'export de ta base apprise |
 | `/cibles import` | Coller un export reçu d'un autre joueur |
 | `/cibles sync` | Forcer une synchro avec ton groupe et ta guilde |

@@ -538,13 +538,64 @@ local function peutMarquer()
     return UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
 end
 
--- Sur ce client, SetRaidTarget est reserve a l'interface Blizzard : le marqueur est donc pose par la macro
--- du bouton (/tm), executee par ton clic, ce qui est autorise. Voir reconstruire().
+-- Sur ce client, SetRaidTarget est reserve a l'interface Blizzard. Deux mecanismes a la place :
+--  1. une icone dessinee par l'addon au-dessus de la barre de nom de chaque mob de la liste (automatique) ;
+--  2. le vrai marqueur de raid pose par la macro du bouton (/tm) au clic, ce qui est autorise.
 local function macroPour(c, i)
     if c.genre == "inconnu" then return "" end
     local m = "/targetexact " .. c.nom
     if peutMarquer() and ICONES[i] then m = m .. "\n/tm " .. ICONES[i] end
     return m
+end
+
+-- ---- Icones au-dessus des barres de nom
+local iconesPlates = {}   -- nameplate frame -> texture
+
+local function iconePourNom()
+    local t = {}
+    for i = 1, MAX_BTN do
+        local b = boutons[i]
+        if b:IsShown() and b.cible and b.cible.genre ~= "inconnu" and ICONES[i] then t[b.cible.nom] = ICONES[i] end
+    end
+    return t
+end
+
+local function texcoordIcone(tex, index)
+    if SetRaidTargetIconTexture then SetRaidTargetIconTexture(tex, index) return end
+    local col, row = (index - 1) % 4, math.floor((index - 1) / 4)
+    tex:SetTexCoord(col * 0.25, col * 0.25 + 0.25, row * 0.25, row * 0.25 + 0.25)
+end
+
+local function majIconePlate(unit, parNom)
+    if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return end
+    local plate = C_NamePlate.GetNamePlateForUnit(unit)
+    if not plate then return end
+    local tex = iconesPlates[plate]
+    if not tex then
+        local holder = CreateFrame("Frame", nil, plate)
+        holder:SetSize(28, 28)
+        holder:SetPoint("BOTTOM", plate, "TOP", 0, -4)
+        holder:SetFrameStrata("HIGH")
+        tex = holder:CreateTexture(nil, "OVERLAY")
+        tex:SetAllPoints()
+        tex:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+        iconesPlates[plate] = tex
+    end
+    local index = QueteCiblesDB.marque ~= false and not UnitIsDead(unit) and parNom[UnitName(unit) or ""]
+    if index then
+        texcoordIcone(tex, index)
+        tex:Show()
+    else
+        tex:Hide()
+    end
+end
+
+local function majToutesIcones()
+    if not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
+    local parNom = iconePourNom()
+    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
+        if plate.namePlateUnitToken then majIconePlate(plate.namePlateUnitToken, parNom) end
+    end
 end
 
 local function rafraichirCouleurs()
@@ -558,6 +609,7 @@ local function rafraichirCouleurs()
             end
         end
     end
+    majToutesIcones()
 end
 
 -- ================================================================ Reconstruction (hors combat uniquement)
@@ -617,6 +669,7 @@ ev:RegisterEvent("QUEST_GREETING")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_REMOVED")
 pcall(ev.RegisterEvent, ev, "UNIT_QUEST_LOG_CHANGED")
+pcall(ev.RegisterEvent, ev, "UNIT_HEALTH")
 
 local attente = 0
 local derniereSynchro = 0
@@ -662,10 +715,16 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         apprendre("mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then
-        if arg1 then apprendre(arg1) end
+        if arg1 then apprendre(arg1); majIconePlate(arg1, iconePourNom()) end
         rafraichirCouleurs()
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        if arg1 and C_NamePlate and C_NamePlate.GetNamePlateForUnit then
+            local plate = C_NamePlate.GetNamePlateForUnit(arg1)
+            if plate and iconesPlates[plate] then iconesPlates[plate]:Hide() end
+        end
         rafraichirCouleurs()
+    elseif event == "UNIT_HEALTH" then
+        if arg1 and arg1:match("^nameplate") and UnitIsDead(arg1) then majIconePlate(arg1, iconePourNom()) end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if majEnAttente then reconstruire() else rafraichirCouleurs() end
     else
@@ -726,7 +785,7 @@ local function commande(msg)
         frame:ClearAllPoints(); frame:SetPoint("RIGHT", UIParent, "RIGHT", -20, 100)
     elseif action == "marque" then
         QueteCiblesDB.marque = (QueteCiblesDB.marque == false) and true or false
-        print(PREFIX .. "Marqueur pose au clic : " .. (QueteCiblesDB.marque and "actif" or "coupe"))
+        print(PREFIX .. "Icones au-dessus des mobs : " .. (QueteCiblesDB.marque and "actives" or "coupees"))
         reconstruire()
     elseif action == "finis" then
         QueteCiblesDB.montrerFinis = not QueteCiblesDB.montrerFinis
