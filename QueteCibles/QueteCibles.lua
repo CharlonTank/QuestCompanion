@@ -126,22 +126,45 @@ local function ressembleNomCreature(s)
     return true
 end
 
--- Objectifs du type "Speak with X" / "Talk to X" / "Parler a X"
+-- Nom d'un PNJ dans une phrase ("Deliver the Signet to Talaanis Shadowsong in Valanaar", "Return to Marshal Dughan",
+-- "Find and speak with Elegael Thornpaw in the northeastern part of...")
+local MOTIFS_RENDU = { "[Rr]eturn to (.-)[%.,]", "[Rr]eturn to (.-) in ", "[Rr]eturn to (.-) at ", "[Rr]eport to (.-)[%.,]",
+    "[Rr]eport to (.-) in ", "[Ss]peak with (.-)[%.,]", "[Ss]peak with (.-) in ", "[Ss]peak with (.-) at ",
+    "[Ss]peak to (.-)[%.,]", "[Ss]peak to (.-) in ", "[Tt]alk to (.-)[%.,]", "[Tt]alk to (.-) in ",
+    " to (.-) in ", " to (.-) at ", " to (.-)[%.,]", "[Rr]etourne[rz]? (?:voir|aupres de) (.-)[%.,]", "[Aa]pporte[rz]? .- [aà] (.-)[%.,]" }
+local function pnjDepuisTexte(texte)
+    if not texte or texte == "" then return end
+    texte = texte .. "."
+    for _, motif in ipairs(MOTIFS_RENDU) do
+        local nom = texte:match(motif)
+        if nom then
+            nom = strtrim(nom)
+            if nom ~= "" and #nom <= 40 and not nom:find("^the ") and ressembleNomCreature(nom) then return nom end
+        end
+    end
+end
+
+-- Objectifs du type "Speak with X" / "Talk to X" / "Find X" / "Listen to X's Story"
 local MOTIFS_PNJ = { "^[Ss]peak with (.+)$", "^[Ss]peak to (.+)$", "^[Tt]alk to (.+)$", "^[Ll]isten to (.+)$",
     "^[Ff]ind (.+)$", "^[Ll]ocate (.+)$", "^[Mm]eet with (.+)$", "^[Mm]eet (.+)$", "^[Rr]escue (.+)$",
     "^[Pp]arle[rz] [aà] (.+)$", "^[Pp]arle[rz] avec (.+)$", "^[Tt]rouve[rz] (.+)$", "^[Ee]scort (.+) to", "^[Ee]scorte[rz] (.+) jusqu" }
 local function pnjDepuisObjectif(texte)
     if not texte then return end
     texte = texte:gsub("^%d+%s*/%s*%d+%s+", ""):gsub(":%s*%d+%s*/%s*%d+%s*$", "")
+    texte = texte:gsub("%s*%(%a+%)%s*$", "")          -- "(Optional)", "(Optionnel)"
     for _, m in ipairs(MOTIFS_PNJ) do
         local nom = texte:match(m)
         if nom then
             nom = strtrim(nom)
+            nom = nom:gsub("'s .*$", "")                -- "Alvarion Windfield's Story" -> "Alvarion Windfield"
+            nom = nom:gsub("%s+in .*$", ""):gsub("%s+at .*$", "")
             -- Seulement si c'est bien un nom propre ("Find Aamelia Windfield" oui, "Find the lost supplies" non)
-            if ressembleNomCreature(nom) then return nom end
-            return nil
+            if nom ~= "" and ressembleNomCreature(nom) then return nom end
+            break
         end
     end
+    -- Sinon, un nom dans la phrase ("Find and speak with Elegael Thornpaw in...")
+    return pnjDepuisTexte(texte)
 end
 
 -- Liste des quetes du journal : { {id=, titre=, complete=, objectifs={ {texte=, type=, fini=, fait=, total=} } } }
@@ -293,23 +316,6 @@ local function apprendrePNJ(role)
     if nom and memoriser(qid, nom, role) then
         partager(qid, encoder(nom, role))
         reconstruire()
-    end
-end
-
--- Nom du PNJ a qui rendre, lu dans le texte d'objectif de la quete
--- ("Deliver the Signet to Talaanis Shadowsong in Valanaar", "Return to Marshal Dughan", "Speak with X")
-local MOTIFS_RENDU = { "[Rr]eturn to (.-)[%.,]", "[Rr]eturn to (.-) in ", "[Rr]eturn to (.-) at ", "[Rr]eport to (.-)[%.,]",
-    "[Rr]eport to (.-) in ", "[Ss]peak with (.-)[%.,]", "[Ss]peak to (.-)[%.,]", "[Tt]alk to (.-)[%.,]",
-    " to (.-) in ", " to (.-) at ", " to (.-)[%.,]", "[Rr]etourne[rz]? (?:voir|aupres de) (.-)[%.,]", "[Aa]pporte[rz]? .- [aà] (.-)[%.,]" }
-local function pnjDepuisTexte(texte)
-    if not texte or texte == "" then return end
-    texte = texte .. "."
-    for _, motif in ipairs(MOTIFS_RENDU) do
-        local nom = texte:match(motif)
-        if nom then
-            nom = strtrim(nom)
-            if nom ~= "" and #nom <= 40 and not nom:find("^the ") and ressembleNomCreature(nom) then return nom end
-        end
     end
 end
 
@@ -553,10 +559,14 @@ local function collecter()
                     ajouter({ nom = nom, quete = q.titre, detail = "Lache : " .. restant.texte,
                         fait = restant.fait, total = restant.total, genre = "mob" })
                 elseif role == "pnj" then
-                    pnjConnu = true
-                    local d = descriptions[1]
-                    pnjs[#pnjs + 1] = { nom = nom, quete = q.titre, genre = "pnj", affichage = d and (nom .. " : " .. d.texte),
-                        detail = d and d.texte or "PNJ ou objet lie a la quete", fait = d and d.fait, total = d and d.total }
+                    -- Un PNJ/objet appris ne concerne que les objectifs d'interaction, jamais un objet a ramasser
+                    local d
+                    for _, desc in ipairs(descriptions) do if desc.type ~= "item" then d = desc break end end
+                    if d then
+                        pnjConnu = true
+                        pnjs[#pnjs + 1] = { nom = nom, quete = q.titre, genre = "pnj", affichage = nom .. " : " .. d.texte,
+                            detail = d.texte, fait = d.fait, total = d.total }
+                    end
                 end
             end
             -- 5. Objectif d'interaction sans PNJ/objet connu : ligne grise, non cliquable, pour que tu saches quoi faire
