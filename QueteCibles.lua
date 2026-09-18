@@ -1,7 +1,16 @@
 local addonName, ns = ...
 local PREFIX = "|cffff8800[QueteCibles]|r "
 local PREFIXE_MSG = "QCibles"
-local LARGEUR, HAUTEUR_BTN, MAX_BTN = 200, 22, 14
+local LARGEUR, HAUTEUR_BTN, MAX_BTN = 210, 22, 16
+
+-- Roles memorises pour un nom, par quete :
+--   true    = mob (compte pour un objectif, kill ou objet a ramasser)
+--   "pnj"   = PNJ avec qui interagir pendant la quete
+--   "donne" = PNJ qui donne la quete
+--   "rend"  = PNJ a qui rendre la quete
+-- Encodage texte (export, messages, Data.lua) : "Nom" / "@Nom" / "!Nom" / "?Nom"
+local CODE_ROLE = { ["@"] = "pnj", ["!"] = "donne", ["?"] = "rend" }
+local ROLE_CODE = { pnj = "@", donne = "!", rend = "?" }
 
 -- ================================================================ Cadre principal
 local frame = CreateFrame("Frame", "QueteCiblesFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -98,14 +107,26 @@ local function nomDepuisObjectif(texte)
     return strtrim(nom), tonumber(fait), tonumber(total), estKill
 end
 
--- Liste des quetes en cours : { {id=, titre=, objectifs={ {texte=, fini=, fait=, total=} } } }
-local function quetesEnCours()
+-- Objectifs du type "Speak with X" / "Talk to X" / "Parler a X"
+local MOTIFS_PNJ = { "^[Ss]peak with (.+)$", "^[Ss]peak to (.+)$", "^[Tt]alk to (.+)$", "^[Pp]arle[rz] [aà] (.+)$",
+    "^[Pp]arle[rz] avec (.+)$", "^[Ee]scort (.+) to", "^[Ee]scorte[rz] (.+) jusqu" }
+local function pnjDepuisObjectif(texte)
+    if not texte then return end
+    texte = texte:gsub("^%d+%s*/%s*%d+%s+", ""):gsub(":%s*%d+%s*/%s*%d+%s*$", "")
+    for _, m in ipairs(MOTIFS_PNJ) do
+        local nom = texte:match(m)
+        if nom then return strtrim(nom) end
+    end
+end
+
+-- Liste des quetes du journal : { {id=, titre=, complete=, objectifs={ {texte=, type=, fini=, fait=, total=} } } }
+local function quetesJournal()
     local res = {}
     if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
         for i = 1, C_QuestLog.GetNumQuestLogEntries() do
             local info = C_QuestLog.GetInfo(i)
-            if info and not info.isHeader and info.questID and not C_QuestLog.IsComplete(info.questID) then
-                local q = { id = info.questID, titre = info.title, objectifs = {} }
+            if info and not info.isHeader and info.questID then
+                local q = { id = info.questID, titre = info.title, complete = C_QuestLog.IsComplete(info.questID), objectifs = {} }
                 local objs = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(info.questID)
                 for _, o in ipairs(objs or {}) do
                     q.objectifs[#q.objectifs + 1] = { texte = o.text, type = o.type, fini = o.finished,
@@ -117,8 +138,8 @@ local function quetesEnCours()
     elseif GetNumQuestLogEntries then
         for i = 1, GetNumQuestLogEntries() do
             local t, _, _, isHeader, _, isComplete, _, qid = GetQuestLogTitle(i)
-            if not isHeader and isComplete ~= 1 then
-                local q = { id = qid or t, titre = t, objectifs = {} }
+            if not isHeader then
+                local q = { id = qid or t, titre = t, complete = (isComplete == 1), objectifs = {} }
                 for j = 1, GetNumQuestLeaderBoards(i) do
                     local texte, typ, fini = GetQuestLogLeaderBoard(j, i)
                     q.objectifs[#q.objectifs + 1] = { texte = texte, type = typ, fini = fini }
@@ -130,9 +151,38 @@ local function quetesEnCours()
     return res
 end
 
--- ================================================================ Apprentissage via le tooltip des mobs
--- Le jeu affiche dans le tooltip d'un mob le titre des quetes pour lesquelles il compte
--- (kill OU objet a ramasser). On memorise : questID -> { nomDuMob = true }.
+-- ================================================================ Base apprise
+local reconstruire        -- declare plus bas
+local partager            -- declare plus bas
+
+-- Decode "?Nom" -> "Nom", "rend"
+local function decoder(nomCode)
+    local role = CODE_ROLE[nomCode:sub(1, 1)]
+    if role then return strtrim(nomCode:sub(2)), role end
+    return strtrim(nomCode), true
+end
+local function encoder(nom, role)
+    return (ROLE_CODE[role] or "") .. nom
+end
+
+-- Enregistre un lien quete -> nom (encode ou non). Retourne true si nouveau.
+local function memoriser(qid, nomCode, role)
+    qid = tonumber(qid) or qid
+    if not qid or not nomCode or nomCode == "" then return false end
+    local nom
+    if role then nom = strtrim(nomCode) else nom, role = decoder(nomCode) end
+    if nom == "" then return false end
+    QueteCiblesDB.appris[qid] = QueteCiblesDB.appris[qid] or {}
+    local actuel = QueteCiblesDB.appris[qid][nom]
+    if actuel == role then return false end
+    -- "rend" est l'info la plus utile : elle remplace "donne" ; sinon on garde la premiere
+    if actuel and not (role == "rend" and actuel == "donne") then return false end
+    QueteCiblesDB.appris[qid][nom] = role
+    return true
+end
+
+-- ---- Apprentissage via le tooltip des creatures
+-- Le jeu affiche dans le tooltip d'une creature le titre des quetes pour lesquelles elle compte.
 local scan = CreateFrame("GameTooltip", "QueteCiblesScanTooltip", UIParent, "GameTooltipTemplate")
 scan:SetOwner(UIParent, "ANCHOR_NONE")
 
@@ -159,37 +209,37 @@ local function lignesTooltip(unit)
 end
 
 local titresQuetes = {}   -- titre -> questID (reconstruit a chaque collecte)
-local reconstruire        -- declare plus bas
-local partager            -- declare plus bas
-
--- Enregistre un lien quete -> mob. Retourne true si c'est nouveau.
-local function memoriser(qid, nom)
-    qid = tonumber(qid) or qid
-    if not qid or not nom or nom == "" then return false end
-    QueteCiblesDB.appris[qid] = QueteCiblesDB.appris[qid] or {}
-    if QueteCiblesDB.appris[qid][nom] then return false end
-    QueteCiblesDB.appris[qid][nom] = true
-    return true
-end
 
 local function apprendre(unit)
-    if not UnitExists(unit) or UnitIsPlayer(unit) or not UnitCanAttack("player", unit) then return end
+    if not UnitExists(unit) or UnitIsPlayer(unit) then return end
     local nom = UnitName(unit)
     if not nom then return end
+    local role = UnitCanAttack("player", unit) and true or "pnj"
     local nouveau = false
     for _, ligne in ipairs(lignesTooltip(unit)) do
         local qid = titresQuetes[strtrim(ligne)]
-        if qid and memoriser(qid, nom) then
+        if qid and memoriser(qid, nom, role) then
             nouveau = true
-            partager(qid, nom)
+            partager(qid, encoder(nom, role))
         end
     end
     if nouveau then reconstruire() end
 end
 
+-- ---- Apprentissage des PNJ donneurs / receveurs de quete (au moment du dialogue)
+local function apprendrePNJ(role)
+    local qid = GetQuestID and GetQuestID()
+    if not qid or qid == 0 then return end
+    if not UnitExists("npc") or UnitIsPlayer("npc") then return end
+    local nom = UnitName("npc")
+    if nom and memoriser(qid, nom, role) then
+        partager(qid, encoder(nom, role))
+        reconstruire()
+    end
+end
+
 -- ================================================================ Partage entre joueurs (messages d'addon)
--- Chaque lien appris est envoye au groupe et a la guilde ; les autres joueurs qui ont l'addon le recoivent.
--- Format des messages : "L<TAB>questID<TAB>mob1;mob2"   ou   "S" (demande de synchro complete)
+-- Format des messages : "L<TAB>questID<TAB>nom1;nom2" (noms encodes)  ou  "S" (demande de synchro)
 local function envoyer(texte, canal, cible)
     if C_ChatInfo and C_ChatInfo.SendAddonMessage then
         pcall(C_ChatInfo.SendAddonMessage, PREFIXE_MSG, texte, canal, cible)
@@ -207,19 +257,23 @@ local function canaux()
     return c
 end
 
-partager = function(qid, nom)
+partager = function(qid, nomCode)
     if QueteCiblesDB.partage == false then return end
-    local msg = "L\t" .. tostring(qid) .. "\t" .. nom
+    local msg = "L\t" .. tostring(qid) .. "\t" .. nomCode
     for _, canal in ipairs(canaux()) do envoyer(msg, canal) end
 end
 
--- Envoie toute la base, par paquets, avec un petit delai entre chaque message
+local function listeEncodee(qid)
+    local liste = {}
+    for nom, role in pairs(QueteCiblesDB.appris[qid] or {}) do liste[#liste + 1] = encoder(nom, role) end
+    table.sort(liste)
+    return liste
+end
+
 local function envoyerTout(canal, cible)
     local paquets = {}
-    for qid, mobs in pairs(QueteCiblesDB.appris) do
-        local liste = {}
-        for nom in pairs(mobs) do liste[#liste + 1] = nom end
-        local msg = "L\t" .. tostring(qid) .. "\t" .. table.concat(liste, ";")
+    for qid in pairs(QueteCiblesDB.appris) do
+        local msg = "L\t" .. tostring(qid) .. "\t" .. table.concat(listeEncodee(qid), ";")
         if #msg <= 250 then paquets[#paquets + 1] = msg end
     end
     local i = 0
@@ -236,14 +290,13 @@ end
 local function recevoir(texte, expediteur)
     local moi = UnitName("player")
     if expediteur == moi or (expediteur and expediteur:match("^([^%-]+)") == moi) then return end
-    local code, qid, mobs = strsplit("\t", texte)
+    local code, qid, noms = strsplit("\t", texte)
     if code == "S" then
-        -- Un joueur demande la base : on lui repond en chuchotement (invisible, message d'addon)
         if expediteur then envoyerTout("WHISPER", expediteur) end
-    elseif code == "L" and qid and mobs then
+    elseif code == "L" and qid and noms then
         local nouveau = false
-        for nom in mobs:gmatch("[^;]+") do
-            if memoriser(qid, strtrim(nom)) then nouveau = true end
+        for nomCode in noms:gmatch("[^;]+") do
+            if memoriser(qid, nomCode) then nouveau = true end
         end
         if nouveau then reconstruire() end
     end
@@ -255,14 +308,12 @@ local function demanderSynchro()
 end
 
 -- ================================================================ Export / import texte
--- Format : questID:mob1;mob2|questID:mob...
+-- Format : questID:nom1;nom2|questID:nom...   (noms encodes : @pnj, !donneur, ?receveur)
 local function exporter()
     local parts = {}
-    for qid, mobs in pairs(QueteCiblesDB.appris) do
-        local liste = {}
-        for nom in pairs(mobs) do liste[#liste + 1] = nom end
-        table.sort(liste)
-        parts[#parts + 1] = tostring(qid) .. ":" .. table.concat(liste, ";")
+    for qid in pairs(QueteCiblesDB.appris) do
+        local liste = listeEncodee(qid)
+        if #liste > 0 then parts[#parts + 1] = tostring(qid) .. ":" .. table.concat(liste, ";") end
     end
     table.sort(parts)
     return table.concat(parts, "|")
@@ -271,10 +322,10 @@ end
 local function importer(texte)
     local n = 0
     for bloc in (texte or ""):gmatch("[^|]+") do
-        local qid, mobs = bloc:match("^%s*(%d+)%s*:%s*(.-)%s*$")
-        if qid and mobs then
-            for nom in mobs:gmatch("[^;]+") do
-                if memoriser(qid, strtrim(nom)) then n = n + 1 end
+        local qid, noms = bloc:match("^%s*(%d+)%s*:%s*(.-)%s*$")
+        if qid and noms then
+            for nomCode in noms:gmatch("[^;]+") do
+                if memoriser(qid, nomCode) then n = n + 1 end
             end
         end
     end
@@ -343,7 +394,7 @@ local function ouvrirFenetre(mode)
 end
 
 -- ================================================================ Collecte des cibles
-local cibles = {}          -- { nom=, quete=, detail=, fait=, total=, fini=, manuel= }
+local cibles = {}          -- { nom=, quete=, detail=, fait=, total=, fini=, genre="mob"/"pnj", manuel= }
 local majEnAttente = false
 
 local function collecter()
@@ -360,30 +411,52 @@ local function collecter()
         ajouter({ nom = n, quete = "Ajoute manuellement", manuel = true })
     end
 
-    for _, q in ipairs(quetesEnCours()) do
+    local pnjs = {}   -- ajoutes a la fin, apres les mobs
+    for _, q in ipairs(quetesJournal()) do
         titresQuetes[q.titre] = q.id
-        local restant = nil          -- premier objectif non termine (pour le compteur des mobs appris)
-        -- 1. Objectifs de type "tuer X"
-        for _, o in ipairs(q.objectifs) do
-            local nom, fait, total, estKill = nomDepuisObjectif(o.texte)
-            if nom and (o.type == "monster" or estKill) then
-                if not o.fini or QueteCiblesDB.montrerFinis then
-                    ajouter({ nom = nom, quete = q.titre, fini = o.fini, fait = o.fait or fait, total = o.total or total })
+        local appris = QueteCiblesDB.appris[q.id] or {}
+
+        if q.complete then
+            -- Quete terminee : le PNJ a qui la rendre (sinon celui qui l'a donnee, souvent le meme)
+            local receveur, donneur
+            for nom, role in pairs(appris) do
+                if role == "rend" then receveur = nom elseif role == "donne" then donneur = nom end
+            end
+            if receveur or donneur then
+                pnjs[#pnjs + 1] = { nom = receveur or donneur, quete = q.titre, genre = "pnj",
+                    detail = receveur and "Rendre la quete" or "Rendre la quete (PNJ qui l'a donnee)", compte = "?" }
+            end
+        else
+            local restant = nil
+            for _, o in ipairs(q.objectifs) do
+                -- 1. "tuer X"
+                local nom, fait, total, estKill = nomDepuisObjectif(o.texte)
+                if nom and (o.type == "monster" or estKill) then
+                    if not o.fini or QueteCiblesDB.montrerFinis then
+                        ajouter({ nom = nom, quete = q.titre, fini = o.fini, fait = o.fait or fait, total = o.total or total, genre = "mob" })
+                    end
+                end
+                if not o.fini and not restant and nom then
+                    restant = { texte = nom, fait = o.fait or fait, total = o.total or total }
+                end
+                -- 2. "parler a X"
+                local pnj = pnjDepuisObjectif(o.texte)
+                if pnj and not o.fini then
+                    pnjs[#pnjs + 1] = { nom = pnj, quete = q.titre, genre = "pnj", detail = o.texte }
                 end
             end
-            if not o.fini and not restant and nom then
-                restant = { texte = nom, fait = o.fait or fait, total = o.total or total }
-            end
-        end
-        -- 2. Mobs appris via tooltip (ex : ceux qui lachent l'objet de quete)
-        local appris = QueteCiblesDB.appris[q.id]
-        if appris and restant then
-            for nom in pairs(appris) do
-                ajouter({ nom = nom, quete = q.titre, detail = "Lache : " .. restant.texte,
-                    fait = restant.fait, total = restant.total })
+            -- 3. Appris : mobs qui comptent pour la quete (objets a ramasser) et PNJ d'interaction
+            for nom, role in pairs(appris) do
+                if role == true and restant then
+                    ajouter({ nom = nom, quete = q.titre, detail = "Lache : " .. restant.texte,
+                        fait = restant.fait, total = restant.total, genre = "mob" })
+                elseif role == "pnj" then
+                    pnjs[#pnjs + 1] = { nom = nom, quete = q.titre, genre = "pnj", detail = "PNJ lie a la quete" }
+                end
             end
         end
     end
+    for _, p in ipairs(pnjs) do ajouter(p) end
 end
 
 -- ================================================================ Visibilite (nameplates + cible actuelle)
@@ -422,12 +495,15 @@ reconstruire = function()
         if i <= n then
             b.cible = c
             b:SetAttribute("macrotext", "/targetexact " .. c.nom)
-            local compte = c.total and (c.fait .. "/" .. c.total) or ""
+            local compte = c.compte or (c.total and (c.fait .. "/" .. c.total)) or ""
             if c.fini then
                 b.nom:SetText("|cff808080" .. c.nom .. "|r")
                 b.compte:SetText("|cff00ff00" .. (compte ~= "" and compte or "ok") .. "|r")
+            elseif c.genre == "pnj" then
+                b.nom:SetText("|cff60ff60" .. c.nom .. "|r")    -- vert = PNJ a qui parler
+                b.compte:SetText("|cffffff00" .. compte .. "|r")
             elseif c.detail then
-                b.nom:SetText("|cffa0d0ff" .. c.nom .. "|r")   -- bleu clair = lache un objet de quete
+                b.nom:SetText("|cffa0d0ff" .. c.nom .. "|r")    -- bleu clair = lache un objet de quete
                 b.compte:SetText(compte)
             else
                 b.nom:SetText(c.nom)
@@ -454,6 +530,9 @@ ev:RegisterEvent("PLAYER_TARGET_CHANGED")
 ev:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 ev:RegisterEvent("CHAT_MSG_ADDON")
 ev:RegisterEvent("GROUP_ROSTER_UPDATE")
+ev:RegisterEvent("QUEST_DETAIL")
+ev:RegisterEvent("QUEST_PROGRESS")
+ev:RegisterEvent("QUEST_COMPLETE")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_REMOVED")
 pcall(ev.RegisterEvent, ev, "UNIT_QUEST_LOG_CHANGED")
@@ -468,8 +547,8 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         QueteCiblesDB.appris = QueteCiblesDB.appris or {}
         if QueteCiblesDB.shown == nil then QueteCiblesDB.shown = true end
         -- Fusion de la base livree avec l'addon (Data.lua)
-        for qid, mobs in pairs(ns.seed or {}) do
-            for _, nom in ipairs(mobs) do memoriser(qid, nom) end
+        for qid, noms in pairs(ns.seed or {}) do
+            for _, nomCode in ipairs(noms) do memoriser(qid, nomCode) end
         end
         if QueteCiblesDB.pos then
             frame:ClearAllPoints()
@@ -483,8 +562,11 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         end
     elseif event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIXE_MSG then recevoir(arg2, arg4) end
+    elseif event == "QUEST_DETAIL" then
+        apprendrePNJ("donne")
+    elseif event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
+        apprendrePNJ("rend")
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        -- Demande la base aux autres, au plus une fois par minute
         if GetTime() - derniereSynchro > 60 then
             derniereSynchro = GetTime()
             if C_Timer then C_Timer.After(3, demanderSynchro) else demanderSynchro() end
@@ -534,7 +616,7 @@ local function commande(msg)
         reconstruire()
     elseif action == "oubli" then
         wipe(QueteCiblesDB.appris)
-        print(PREFIX .. "Mobs appris via tooltip oublies")
+        print(PREFIX .. "Base apprise effacee")
         reconstruire()
     elseif action == "export" then
         ouvrirFenetre("export")
@@ -549,9 +631,12 @@ local function commande(msg)
         QueteCiblesDB.partage = (QueteCiblesDB.partage == false) and true or false
         print(PREFIX .. "Partage automatique : " .. (QueteCiblesDB.partage and "active" or "desactive"))
     elseif action == "stats" then
-        local nq, nm = 0, 0
-        for _, mobs in pairs(QueteCiblesDB.appris) do nq = nq + 1; for _ in pairs(mobs) do nm = nm + 1 end end
-        print(PREFIX .. nq .. " quete(s), " .. nm .. " lien(s) mob->quete en base")
+        local nq, nm, np = 0, 0, 0
+        for _, noms in pairs(QueteCiblesDB.appris) do
+            nq = nq + 1
+            for _, role in pairs(noms) do if role == true then nm = nm + 1 else np = np + 1 end end
+        end
+        print(PREFIX .. nq .. " quete(s), " .. nm .. " mob(s), " .. np .. " PNJ en base")
     elseif action == "reset" then
         QueteCiblesDB.pos = nil
         frame:ClearAllPoints(); frame:SetPoint("RIGHT", UIParent, "RIGHT", -20, 100)

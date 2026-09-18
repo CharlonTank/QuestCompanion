@@ -4,6 +4,7 @@ Addon World of Warcraft (beta Classic 1.60) qui affiche la liste des mobs de tes
 
 - Mobs à tuer, extraits de tes objectifs de quête, avec le compteur (3/10).
 - Mobs qui lâchent un objet de quête, appris automatiquement en lisant le tooltip des créatures.
+- PNJ à qui parler ou rendre la quête (en vert), appris quand tu acceptes ou rends une quête.
 - Point vert quand un mob de ce nom est visible autour de toi.
 - Base de données **commune** : chaque joueur qui contribue enrichit `Data.lua` pour tout le monde.
 
@@ -43,7 +44,7 @@ Le fichier `Data.lua` mis à jour est distribué à tous ceux qui téléchargent
 ### Format d'export
 
 ```
-questID:Mob1;Mob2|questID:Mob3
+questID:Mob1;Mob2;?PNJ qui recoit la quete|questID:Mob3;@PNJ a qui parler
 ```
 
 ## Fonctionnement technique

@@ -38,7 +38,7 @@ for (const bloc of candidats) {
 // ---- Reecriture de Data.lua
 const lignes = [
     "-- Base partagee, livree avec l'addon. Fusionnee dans la base apprise au chargement.",
-    '-- Format : [questID] = { "Nom du mob", "Autre mob" }',
+    '-- Format : [questID] = { "Nom du mob", "@PNJ a qui parler", "!PNJ qui donne la quete", "?PNJ a qui la rendre" }',
     "-- Genere automatiquement par tools/merge-export.js a partir des issues [export].",
     "local _, ns = ...",
     "ns.seed = {",
