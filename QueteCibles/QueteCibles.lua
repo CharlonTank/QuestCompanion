@@ -88,11 +88,12 @@ for i = 1, MAX_BTN do
 end
 
 -- ================================================================ Analyse des objectifs
-local VERBES = { " slain", " killed", " tues", " tue", " tuees", " tuee", " vaincus", " vaincu" }
+local VERBES = { " slain", " killed", " exterminated", " destroyed", " defeated", " eliminated", " hunted", " culled",
+    " tues", " tue", " tuees", " tuee", " vaincus", " vaincu", " extermines", " extermine", " detruits", " detruit" }
 
 -- Retourne nom, fait, total, estKill
 -- Formats acceptes : "Nom slain: 3/10" (Classic) et "3/10 Nom slain" (client moderne)
-local function nomDepuisObjectif(texte)
+local function nomDepuisObjectif(texte, typeObjectif)
     if not texte then return end
     local nom, fait, total = texte:match("^(.-):%s*(%d+)%s*/%s*(%d+)%s*$")
     if not nom then
@@ -104,18 +105,42 @@ local function nomDepuisObjectif(texte)
     for _, v in ipairs(VERBES) do
         if l:sub(-#v) == v then nom = nom:sub(1, -#v - 1); estKill = true break end
     end
+    -- Objectif "monstre" dont le dernier mot est un participe passe inconnu ("Exterminated", "Vanquished"...) :
+    -- on le retire aussi, un nom de creature ne se termine pas par un verbe
+    if not estKill and typeObjectif == "monster" then
+        local avant, dernier = nom:match("^(.+%S)%s+(%a+ed)$")
+        if avant and dernier and dernier:sub(1, 1):match("%u") then nom = avant; estKill = true end
+    end
     return strtrim(nom), tonumber(fait), tonumber(total), estKill
 end
 
+-- Un nom de creature est en Title Case ("Hippogryph Youth", "\"Badwind\" Bennic").
+-- Une description d'objectif contient des mots en minuscules ("Learn about the cultists' plans").
+local PETITS_MOTS = { of = true, the = true, a = true, an = true, ["and"] = true, de = true, du = true, des = true,
+    la = true, le = true, les = true, ["l'"] = true, ["d'"] = true }
+local function ressembleNomCreature(s)
+    for mot in s:gmatch("%S+") do
+        local lettre = mot:match("^[\"'%(%[]*(%a)")
+        if lettre and lettre:match("%l") and not PETITS_MOTS[mot:lower()] then return false end
+    end
+    return true
+end
+
 -- Objectifs du type "Speak with X" / "Talk to X" / "Parler a X"
-local MOTIFS_PNJ = { "^[Ss]peak with (.+)$", "^[Ss]peak to (.+)$", "^[Tt]alk to (.+)$", "^[Pp]arle[rz] [aà] (.+)$",
-    "^[Pp]arle[rz] avec (.+)$", "^[Ee]scort (.+) to", "^[Ee]scorte[rz] (.+) jusqu" }
+local MOTIFS_PNJ = { "^[Ss]peak with (.+)$", "^[Ss]peak to (.+)$", "^[Tt]alk to (.+)$", "^[Ll]isten to (.+)$",
+    "^[Ff]ind (.+)$", "^[Ll]ocate (.+)$", "^[Mm]eet with (.+)$", "^[Mm]eet (.+)$", "^[Rr]escue (.+)$",
+    "^[Pp]arle[rz] [aà] (.+)$", "^[Pp]arle[rz] avec (.+)$", "^[Tt]rouve[rz] (.+)$", "^[Ee]scort (.+) to", "^[Ee]scorte[rz] (.+) jusqu" }
 local function pnjDepuisObjectif(texte)
     if not texte then return end
     texte = texte:gsub("^%d+%s*/%s*%d+%s+", ""):gsub(":%s*%d+%s*/%s*%d+%s*$", "")
     for _, m in ipairs(MOTIFS_PNJ) do
         local nom = texte:match(m)
-        if nom then return strtrim(nom) end
+        if nom then
+            nom = strtrim(nom)
+            -- Seulement si c'est bien un nom propre ("Find Aamelia Windfield" oui, "Find the lost supplies" non)
+            if ressembleNomCreature(nom) then return nom end
+            return nil
+        end
     end
 end
 
@@ -269,18 +294,6 @@ local function apprendrePNJ(role)
         partager(qid, encoder(nom, role))
         reconstruire()
     end
-end
-
--- Un nom de creature est en Title Case ("Hippogryph Youth", "\"Badwind\" Bennic").
--- Une description d'objectif contient des mots en minuscules ("Learn about the cultists' plans").
-local PETITS_MOTS = { of = true, the = true, a = true, an = true, ["and"] = true, de = true, du = true, des = true,
-    la = true, le = true, les = true, ["l'"] = true, ["d'"] = true }
-local function ressembleNomCreature(s)
-    for mot in s:gmatch("%S+") do
-        local lettre = mot:match("^[\"'%(%[]*(%a)")
-        if lettre and lettre:match("%l") and not PETITS_MOTS[mot:lower()] then return false end
-    end
-    return true
 end
 
 -- Nom du PNJ a qui rendre, lu dans le texte d'objectif de la quete
@@ -512,7 +525,7 @@ local function collecter()
                 end
                 etats[k] = o.fini and true or false
 
-                local nom, fait, total, estKill = nomDepuisObjectif(o.texte)
+                local nom, fait, total, estKill = nomDepuisObjectif(o.texte, o.type)
                 local pnj = pnjDepuisObjectif(o.texte)
                 if pnj then
                     -- 1. "parler a X" : le nom du PNJ est dans le texte
@@ -583,8 +596,9 @@ end
 --  2. le vrai marqueur de raid pose par la macro du bouton (/tm) au clic, ce qui est autorise.
 local function macroPour(c, i)
     if c.genre == "inconnu" then return "" end
-    local m = "/targetexact " .. c.nom
-    if peutMarquer() and ICONES[i] then m = m .. "\n/tm " .. ICONES[i] end
+    -- /cleartarget d'abord : si le nom n'est pas trouve, on n'a plus de cible et /tm ne marque rien
+    local m = "/cleartarget\n/targetexact " .. c.nom
+    if peutMarquer() and ICONES[i] then m = m .. "\n/tm [exists,nodead] " .. ICONES[i] end
     return m
 end
 
