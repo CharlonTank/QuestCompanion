@@ -181,6 +181,24 @@ local function collecter()
             end
         end
     end
+    -- Points "!" appris par la communaute (QueteRoute) : la ou d'autres joueurs ont pris des quetes que tu n'as pas faites
+    if QueteRoute_PointsPrendre then
+        local ok, liste = pcall(QueteRoute_PointsPrendre)
+        if ok and liste then
+            for _, p in ipairs(liste) do
+                if p.map == mapID then
+                    ajouter(mapID, p.x, p.y, "!", p.nom, "communaute")
+                else
+                    -- Autre carte : on garde la distance, pas la direction
+                    local wx, wy = mondeDepuisCarte(p.map, p.x, p.y)
+                    if wx then
+                        sourcesOK["communaute"] = (sourcesOK["communaute"] or 0) + 1
+                        candidats[#candidats + 1] = { wx = wx, wy = wy, type = "!", nom = p.nom }
+                    end
+                end
+            end
+        end
+    end
     if C_QuestLine and C_QuestLine.GetAvailableQuestLines then
         if C_QuestLine.RequestQuestLinesForMap then pcall(C_QuestLine.RequestQuestLinesForMap, mapID) end
         local ok, list = pcall(C_QuestLine.GetAvailableQuestLines, mapID)

@@ -262,6 +262,22 @@ local function calculerEtapes()
     while #etapes > 5 do table.remove(etapes) end
 end
 
+-- Points "quete a prendre" connus de la communaute, pour QueteGPS (quetes pas faites, pas dans le journal, niveau ok)
+function QueteRoute_PointsPrendre()
+    local res = {}
+    local route = ns.route and ns.route[UnitFactionGroup("player") or "Neutral"]
+    if not route then return res end
+    local niveau = UnitLevel("player")
+    for qid, q in pairs(route.quetes) do
+        if q.prendre and q.prendre.map and not QueteRouteDB.passes[qid] and not queteDejaFaite(qid) and not questIndex(qid)
+            and (q.niveau or 0) <= niveau + 2 then
+            res[#res + 1] = { map = q.prendre.map, x = q.prendre.x, y = q.prendre.y,
+                nom = (q.titre or titreQuete(qid)) .. (q.prendre.pnj and (" (" .. q.prendre.pnj .. ")") or "") }
+        end
+    end
+    return res
+end
+
 local function afficher()
     calculerEtapes()
     local e = etapes[1]
