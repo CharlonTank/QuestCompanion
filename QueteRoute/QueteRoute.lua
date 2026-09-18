@@ -70,11 +70,18 @@ local function surveillerObjectifs()
                 for k, o in ipairs(objs) do
                     local e = etat[k] or { fini = false, fait = 0 }
                     local fait = o.numFulfilled or 0
-                    -- On note la position au premier progres et a la fin de chaque objectif
-                    if (o.finished and not e.fini) or (fait > 0 and e.fait == 0) then
-                        enregistrer({ k = "O", q = qid, i = k, f = o.finished and 1 or 0 })
+                    -- On note la position a chaque progres (objet ramasse, mob tue, PNJ trouve) et a la fin,
+                    -- en evitant les doublons trop proches : c'est ce qui permet de tracer un parcours
+                    if (o.finished and not e.fini) or fait > e.fait then
+                        local map, x, y = position()
+                        local dx, dy = (x or 0) - (e.x or -1), (y or 0) - (e.y or -1)
+                        local loin = (map ~= e.map) or (dx * dx + dy * dy) > 0.003 * 0.003
+                        if loin or (o.finished and not e.fini) then
+                            enregistrer({ k = "O", q = qid, i = k, f = o.finished and 1 or 0 })
+                            e.map, e.x, e.y = map, x, y
+                        end
                     end
-                    etat[k] = { fini = o.finished, fait = fait }
+                    etat[k] = { fini = o.finished, fait = fait, map = e.map, x = e.x, y = e.y }
                 end
             end
         end
@@ -204,6 +211,47 @@ local function donneursConnus(nom)
     return res
 end
 
+-- ---- Parcours : pour un objectif connu a plusieurs endroits (objets disperses, PNJ a trouver),
+--      on enchaine les spots, le plus proche d'abord, en cochant ceux atteints ou ou l'objectif a progresse
+local parcours = {}   -- "qid:k" -> { visites = { [idx] = true }, fait = dernier compteur }
+
+local function spotsObjectif(q, k)
+    local o = q and q.objectifs and q.objectifs[k]
+    if not o then return {} end
+    if o.points and #o.points > 0 then return o.points end
+    if o.map then return { o } end
+    return {}
+end
+
+-- Retourne le prochain spot a visiter, son index et le nombre total
+local function prochainSpot(qid, k, q, fait)
+    local spots = spotsObjectif(q, k)
+    if #spots == 0 then return end
+    local cle = qid .. ":" .. k
+    local p = parcours[cle]
+    if not p then p = { visites = {}, fait = fait or 0 }; parcours[cle] = p end
+    -- Spot atteint (a moins de 20 yards) ou objectif qui vient de progresser pres d'un spot : coche
+    local plusProche, dMin
+    for idx, s in ipairs(spots) do
+        local d = distanceDepuisJoueur(s)
+        if d and (not dMin or d < dMin) then plusProche, dMin = idx, d end
+    end
+    if plusProche and dMin and (dMin < 20 or ((fait or 0) > p.fait and dMin < 60)) then p.visites[plusProche] = true end
+    p.fait = fait or p.fait
+    -- Prochain : le plus proche parmi les non visites ; si tout est visite, on repart de zero
+    local best, bestD
+    for idx, s in ipairs(spots) do
+        if not p.visites[idx] then
+            local d = distanceDepuisJoueur(s) or 1e9
+            if not bestD or d < bestD then best, bestD = idx, d end
+        end
+    end
+    if not best then wipe(p.visites); best = plusProche or 1 end
+    local n = 0
+    for _ in pairs(p.visites) do n = n + 1 end
+    return spots[best], n + 1, #spots
+end
+
 local function decrireEtape(e)
     local titre = (e.q and e.q.titre) or titreQuete(e.qid)
     local pnj = e.point and e.point.pnj
@@ -215,7 +263,8 @@ local function decrireEtape(e)
     else
         local reste = {}
         for _, o in ipairs(objectifs(e.qid)) do if not o.finished and o.text then reste[#reste + 1] = o.text end end
-        return ("Faire |cffffff00%s|r : %s"):format(titre, table.concat(reste, ", "))
+        local etape = e.spotIndex and e.spotTotal and e.spotTotal > 1 and (" |cffa0d0ff(spot %d/%d)|r"):format(e.spotIndex, e.spotTotal) or ""
+        return ("Faire |cffffff00%s|r : %s%s"):format(titre, table.concat(reste, ", "), etape)
     end
 end
 
@@ -260,11 +309,15 @@ local function calculerEtapes()
                         if pnj then e.point = { map = e.point.map, x = e.point.x, y = e.point.y, pnj = pnj } end
                     end
                 else
-                    local point
+                    local point, spotIndex, spotTotal
                     for k, o in ipairs(objectifs(qid)) do
-                        if not o.finished and q.objectifs and q.objectifs[k] then point = q.objectifs[k] break end
+                        if not o.finished and q.objectifs and q.objectifs[k] then
+                            point, spotIndex, spotTotal = prochainSpot(qid, k, q, o.numFulfilled)
+                            if point then break end
+                        end
                     end
-                    e = { type = "faire", qid = qid, q = q, point = point or pointClient(qid) or (q.objectifs and q.objectifs[1]) }
+                    e = { type = "faire", qid = qid, q = q, point = point or pointClient(qid) or (q.objectifs and q.objectifs[1]),
+                        spotIndex = spotIndex, spotTotal = spotTotal }
                 end
                 e.dist = distanceDepuisJoueur(e.point)
                 locales[#locales + 1] = e

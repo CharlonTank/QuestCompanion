@@ -43,6 +43,21 @@ const pointMedian = (evs) => {
     return { map, x: +mediane(surMap.map((e) => e.x)).toFixed(3), y: +mediane(surMap.map((e) => e.y)).toFixed(3), pnj: plusFrequent(surMap.map((e) => e.npc)) };
 };
 
+// Regroupe les positions d'un objectif en "spots" (rayon RAYON en coordonnees de carte, ~1.2 % de la carte).
+// Un objectif "objets disperses" donne plusieurs spots ; en jeu, la fleche les enchaine.
+const RAYON = 0.012;
+const spots = (evs) => {
+    const valides = evs.filter((e) => e.map > 0 && e.x > 0 && e.y > 0);
+    const clusters = [];
+    for (const e of valides) {
+        let c = clusters.find((c) => c.map === e.map && Math.hypot(c.x - e.x, c.y - e.y) <= RAYON);
+        if (c) { c.x = (c.x * c.n + e.x) / (c.n + 1); c.y = (c.y * c.n + e.y) / (c.n + 1); c.n++; }
+        else clusters.push({ map: e.map, x: e.x, y: e.y, n: 1 });
+    }
+    clusters.sort((a, b) => b.n - a.n);
+    return clusters.map((c) => ({ map: c.map, x: +c.x.toFixed(3), y: +c.y.toFixed(3), n: c.n }));
+};
+
 const factions = {};
 for (const { faction, events } of Object.values(data.contributeurs)) {
     const F = (factions[faction] = factions[faction] || {});
@@ -59,7 +74,13 @@ for (const { faction, events } of Object.values(data.contributeurs)) {
 
 // ---- Ecriture de Route.lua
 const esc = (s) => '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
-const luaPoint = (p) => p ? `{ map = ${p.map}, x = ${p.x}, y = ${p.y}${p.pnj ? `, pnj = ${esc(p.pnj)}` : ""} }` : "nil";
+const luaPoint = (p) => {
+    if (!p) return "nil";
+    let s = `{ map = ${p.map}, x = ${p.x}, y = ${p.y}`;
+    if (p.pnj) s += `, pnj = ${esc(p.pnj)}`;
+    if (p.points && p.points.length > 1) s += `, points = { ${p.points.map((q) => `{ map = ${q.map}, x = ${q.x}, y = ${q.y}, n = ${q.n} }`).join(", ")} }`;
+    return s + " }";
+};
 const lignes = [
     "-- Route communautaire, generee par tools/merge-route.js a partir des issues [route] sur GitHub. Ne pas editer a la main.",
     "-- ns.route[faction] = { ordre = { questID... }, quetes = { [questID] = { titre, niveau, contributeurs, prendre, rendre, objectifs } } }",
@@ -74,8 +95,11 @@ for (const faction of Object.keys(factions).sort()) {
         const niveau = mediane(Q.A.map((e) => e.lvl)) ?? mediane(Q.T.map((e) => e.lvl)) ?? 0;
         const rang = mediane(Q.rangs) ?? 1;
         const objectifs = Object.keys(Q.O).sort((a, b) => a - b).map((i) => {
-            const finis = Q.O[i].filter((e) => e.f === 1);
-            return [i, pointMedian(finis.length ? finis : Q.O[i])];
+            const liste = spots(Q.O[i]);
+            if (!liste.length) return [i, undefined];
+            // Point principal = spot le plus frequente ; tous les spots (max 12) pour le parcours
+            const p = { map: liste[0].map, x: liste[0].x, y: liste[0].y, points: liste.slice(0, 12) };
+            return [i, p];
         }).filter(([, p]) => p);
         quetes.push({ qid: +qid, titre: plusFrequent(Q.titres), niveau, rang, contributeurs: new Set(Q.A.map((e) => e.lvl + ":" + e.map)).size || Q.T.length,
             prendre: pointMedian(Q.A), rendre: pointMedian(Q.T), objectifs });
