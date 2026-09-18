@@ -177,7 +177,7 @@ end
 -- Enregistre un lien quete -> nom (encode ou non). Retourne true si nouveau.
 local function memoriser(qid, nomCode, role)
     qid = tonumber(qid) or qid
-    if not qid or not nomCode or nomCode == "" then return false end
+    if not qid or type(nomCode) ~= "string" or nomCode == "" then return false end
     local nom
     if role then nom = strtrim(nomCode) else nom, role = decoder(nomCode) end
     if nom == "" then return false end
@@ -245,10 +245,12 @@ local function nomInteraction()
     if UnitExists("npc") and not UnitIsPlayer("npc") then return UnitName("npc") end
     local f = GossipFrame
     if f then
+        -- Selon le client, GetTitleText renvoie la chaine ou l'objet FontString
         local t = (f.GetTitleText and f:GetTitleText())
-            or (f.TitleContainer and f.TitleContainer.TitleText and f.TitleContainer.TitleText:GetText())
-            or (GossipFrameNpcNameText and GossipFrameNpcNameText:GetText())
-        if t and t ~= "" then return t end
+            or (f.TitleContainer and f.TitleContainer.TitleText)
+            or GossipFrameNpcNameText
+        if type(t) == "table" and t.GetText then t = t:GetText() end
+        if type(t) == "string" and t ~= "" then return t end
     end
 end
 
