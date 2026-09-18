@@ -33,3 +33,18 @@ Chaque joueur avec QueteRoute enregistre, sans rien faire, où et à quel niveau
 ## Détails par addon
 
 - [QueteCibles](QueteCibles/README-QueteCibles.md)
+
+## Synchronisation automatique (compagnon)
+
+Le jeu interdit aux addons tout accès réseau. Le script `companion/QuestCompanion-Sync.ps1` fait le lien, comme les compagnons de RestedXP ou TSM :
+
+- il envoie automatiquement ce que tes addons ont appris (cibles, parcours) au dépôt, où le robot le fusionne ;
+- il récupère la base commune à jour dans ton dossier AddOns.
+
+Installation, une seule fois, dans PowerShell :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "chemin\vers\companion\QuestCompanion-Sync.ps1" -Install
+```
+
+Ça crée une tâche planifiée qui tourne toutes les 15 minutes. Pour l'envoi, il faut soit [GitHub CLI](https://cli.github.com) connecté (`gh auth login`), soit un jeton GitHub collé dans `%LOCALAPPDATA%\QuestCompanion\token.txt`. Sans ça, seule la réception fonctionne. Les addons écrivent leurs données au `/reload`, à la déconnexion ou à la fermeture du jeu, donc les envois suivent ce rythme. Journal : `%LOCALAPPDATA%\QuestCompanion\sync.log`.

@@ -347,6 +347,7 @@ end
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+ev:RegisterEvent("PLAYER_LOGOUT")
 ev:RegisterEvent("QUEST_DETAIL")
 ev:RegisterEvent("QUEST_PROGRESS")
 ev:RegisterEvent("QUEST_COMPLETE")
@@ -370,6 +371,12 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
             frame:SetPoint(QueteRouteDB.pos[1], UIParent, QueteRouteDB.pos[2], QueteRouteDB.pos[3], QueteRouteDB.pos[4])
         end
         if QueteRouteDB.shown then frame:Show() else frame:Hide() end
+    elseif event == "PLAYER_LOGOUT" then
+        -- Export pret a l'emploi dans la sauvegarde : le compagnon (companion/QuestCompanion-Sync.ps1) le lit et l'envoie
+        if cle then
+            QueteRouteDB.exports = QueteRouteDB.exports or {}
+            QueteRouteDB.exports[cle] = exporter()
+        end
     elseif event == "PLAYER_ENTERING_WORLD" then
         cle = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
         wipe(etatObjectifs)

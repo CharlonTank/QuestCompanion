@@ -656,6 +656,7 @@ end
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+ev:RegisterEvent("PLAYER_LOGOUT")
 ev:RegisterEvent("QUEST_LOG_UPDATE")
 ev:RegisterEvent("PLAYER_REGEN_ENABLED")
 ev:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -695,6 +696,9 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         elseif RegisterAddonMessagePrefix then
             RegisterAddonMessagePrefix(PREFIXE_MSG)
         end
+    elseif event == "PLAYER_LOGOUT" then
+        -- Export pret a l'emploi dans la sauvegarde : le compagnon (companion/QuestCompanion-Sync.ps1) le lit et l'envoie
+        QueteCiblesDB.export = exporter()
     elseif event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIXE_MSG then recevoir(arg2, arg4) end
     elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then
