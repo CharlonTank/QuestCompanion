@@ -540,6 +540,7 @@ end
 
 local function marquer()
     if not peutMarquer() or not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
+    if InCombatLockdown() then return end   -- SetRaidTarget est bloque en combat pour les addons
     local iconeParNom = {}
     for i = 1, MAX_BTN do
         local b = boutons[i]
@@ -686,7 +687,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         rafraichirCouleurs()
     elseif event == "PLAYER_REGEN_ENABLED" then
-        if majEnAttente then reconstruire() end
+        if majEnAttente then reconstruire() else rafraichirCouleurs() end
     else
         -- QUEST_LOG_UPDATE arrive en rafale : on regroupe
         attente = 0.3
