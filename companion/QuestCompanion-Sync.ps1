@@ -41,8 +41,10 @@ if ($Install) {
     $script = $MyInvocation.MyCommand.Path
     $cmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`""
     schtasks /Create /TN "$taskName" /SC MINUTE /MO 15 /TR "$cmd" /F | Out-Null
-    schtasks /Create /TN "$taskName (session)" /SC ONLOGON /TR "$cmd" /F | Out-Null
-    Log "Tache planifiee installee : toutes les 15 minutes et a l'ouverture de session"
+    if ($LASTEXITCODE -ne 0) { Log "Impossible de creer la tache planifiee"; return }
+    # La tache "a l'ouverture de session" demande les droits administrateur : facultative
+    cmd /c "schtasks /Create /TN `"$taskName (session)`" /SC ONLOGON /TR `"$cmd`" /F >nul 2>&1"
+    Log "Tache planifiee installee : toutes les 15 minutes"
 }
 
 # ---------------------------------------------------------------- Dossier du jeu
