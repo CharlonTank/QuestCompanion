@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const dataPath = path.join(__dirname, "..", "Data.lua");
+const dataPath = path.join(__dirname, "..", "QueteCibles", "Data.lua");
 const texte = process.argv[2] || process.env.EXPORT_TEXT || "";
 
 // ---- Lecture de Data.lua existant : [123] = { "A", "B" },

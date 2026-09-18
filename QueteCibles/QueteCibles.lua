@@ -214,7 +214,9 @@ local function apprendre(unit)
     if not UnitExists(unit) or UnitIsPlayer(unit) then return end
     local nom = UnitName(unit)
     if not nom then return end
-    local role = UnitCanAttack("player", unit) and true or "pnj"
+    -- Hostile (rouge) = mob ; neutre ou amical = PNJ d'interaction
+    local reaction = UnitReaction(unit, "player") or 4
+    local role = (UnitCanAttack("player", unit) and reaction <= 3) and true or "pnj"
     local nouveau = false
     for _, ligne in ipairs(lignesTooltip(unit)) do
         local qid = titresQuetes[strtrim(ligne)]
@@ -227,7 +229,27 @@ local function apprendre(unit)
 end
 
 -- ---- Apprentissage des PNJ donneurs / receveurs de quete (au moment du dialogue)
+local dernierPNJ = { nom = nil, t = 0 }   -- dernier PNJ avec qui on a interagi (gossip, quete)
+
+-- Nom de ce avec quoi on interagit : PNJ, ou objet (armoire, coffre...) via le titre de la fenetre de dialogue
+local function nomInteraction()
+    if UnitExists("npc") and not UnitIsPlayer("npc") then return UnitName("npc") end
+    local f = GossipFrame
+    if f then
+        local t = (f.GetTitleText and f:GetTitleText())
+            or (f.TitleContainer and f.TitleContainer.TitleText and f.TitleContainer.TitleText:GetText())
+            or (GossipFrameNpcNameText and GossipFrameNpcNameText:GetText())
+        if t and t ~= "" then return t end
+    end
+end
+
+local function noterInteraction()
+    local nom = nomInteraction()
+    if nom then dernierPNJ.nom, dernierPNJ.t = nom, GetTime() end
+end
+
 local function apprendrePNJ(role)
+    noterInteraction()
     local qid = GetQuestID and GetQuestID()
     if not qid or qid == 0 then return end
     if not UnitExists("npc") or UnitIsPlayer("npc") then return end
@@ -236,6 +258,18 @@ local function apprendrePNJ(role)
         partager(qid, encoder(nom, role))
         reconstruire()
     end
+end
+
+-- Un nom de creature est en Title Case ("Hippogryph Youth", "\"Badwind\" Bennic").
+-- Une description d'objectif contient des mots en minuscules ("Learn about the cultists' plans").
+local PETITS_MOTS = { of = true, the = true, a = true, an = true, ["and"] = true, de = true, du = true, des = true,
+    la = true, le = true, les = true, ["l'"] = true, ["d'"] = true }
+local function ressembleNomCreature(s)
+    for mot in s:gmatch("%S+") do
+        local lettre = mot:match("^[\"'%(%[]*(%a)")
+        if lettre and lettre:match("%l") and not PETITS_MOTS[mot:lower()] then return false end
+    end
+    return true
 end
 
 -- ================================================================ Partage entre joueurs (messages d'addon)
@@ -394,8 +428,9 @@ local function ouvrirFenetre(mode)
 end
 
 -- ================================================================ Collecte des cibles
-local cibles = {}          -- { nom=, quete=, detail=, fait=, total=, fini=, genre="mob"/"pnj", manuel= }
+local cibles = {}          -- { nom=, quete=, detail=, fait=, total=, fini=, genre="mob"/"pnj"/"inconnu", manuel= }
 local majEnAttente = false
+local etatsObjectifs = {}  -- questID -> { [k] = fini } pour detecter les objectifs qui viennent de se terminer
 
 local function collecter()
     wipe(cibles); wipe(titresQuetes)
@@ -428,30 +463,54 @@ local function collecter()
             end
         else
             local restant = nil
-            for _, o in ipairs(q.objectifs) do
-                -- 1. "tuer X"
+            local descriptions = {}   -- objectifs d'interaction ("Learn about the cultists' plans")
+            local etats = etatsObjectifs[q.id] or {}
+            for k, o in ipairs(q.objectifs) do
+                -- Objectif qui vient de se terminer juste apres un dialogue : ce PNJ est lie a la quete
+                if o.fini and etats[k] == false and dernierPNJ.nom and GetTime() - dernierPNJ.t < 20 then
+                    if memoriser(q.id, dernierPNJ.nom, "pnj") then partager(q.id, encoder(dernierPNJ.nom, "pnj")) end
+                end
+                etats[k] = o.fini and true or false
+
                 local nom, fait, total, estKill = nomDepuisObjectif(o.texte)
-                if nom and (o.type == "monster" or estKill) then
+                local pnj = pnjDepuisObjectif(o.texte)
+                if pnj then
+                    -- 1. "parler a X" : le nom du PNJ est dans le texte
+                    if not o.fini then pnjs[#pnjs + 1] = { nom = pnj, quete = q.titre, genre = "pnj", detail = o.texte } end
+                elseif nom and (estKill or (o.type == "monster" and ressembleNomCreature(nom))) then
+                    -- 2. "tuer X" : vrai nom de creature
                     if not o.fini or QueteCiblesDB.montrerFinis then
                         ajouter({ nom = nom, quete = q.titre, fini = o.fini, fait = o.fait or fait, total = o.total or total, genre = "mob" })
                     end
-                end
-                if not o.fini and not restant and nom then
-                    restant = { texte = nom, fait = o.fait or fait, total = o.total or total }
-                end
-                -- 2. "parler a X"
-                local pnj = pnjDepuisObjectif(o.texte)
-                if pnj and not o.fini then
-                    pnjs[#pnjs + 1] = { nom = pnj, quete = q.titre, genre = "pnj", detail = o.texte }
+                    if not o.fini and not restant then restant = { texte = nom, fait = o.fait or fait, total = o.total or total } end
+                elseif nom then
+                    -- 3. Description d'objectif (objet a ramasser, interaction...) : pas un nom de cible
+                    if not o.fini then
+                        descriptions[#descriptions + 1] = { texte = nom, fait = o.fait or fait, total = o.total or total, type = o.type }
+                        if not restant then restant = descriptions[#descriptions] end
+                    end
                 end
             end
-            -- 3. Appris : mobs qui comptent pour la quete (objets a ramasser) et PNJ d'interaction
+            etatsObjectifs[q.id] = etats
+
+            -- 4. Appris : mobs qui comptent pour la quete (objets a ramasser) et PNJ d'interaction
+            local pnjConnu = false
             for nom, role in pairs(appris) do
                 if role == true and restant then
                     ajouter({ nom = nom, quete = q.titre, detail = "Lache : " .. restant.texte,
                         fait = restant.fait, total = restant.total, genre = "mob" })
                 elseif role == "pnj" then
-                    pnjs[#pnjs + 1] = { nom = nom, quete = q.titre, genre = "pnj", detail = "PNJ lie a la quete" }
+                    pnjConnu = true
+                    local d = descriptions[1]
+                    pnjs[#pnjs + 1] = { nom = nom, quete = q.titre, genre = "pnj", affichage = d and (nom .. " : " .. d.texte),
+                        detail = d and d.texte or "PNJ ou objet lie a la quete", fait = d and d.fait, total = d and d.total }
+                end
+            end
+            -- 5. Objectif d'interaction sans PNJ/objet connu : ligne grise, non cliquable, pour que tu saches quoi faire
+            for _, d in ipairs(descriptions) do
+                if d.type ~= "item" and not pnjConnu then
+                    pnjs[#pnjs + 1] = { nom = d.texte, quete = q.titre, genre = "inconnu", fait = d.fait, total = d.total,
+                        detail = "PNJ ou objet inconnu : interagis avec, l'addon l'apprendra pour tout le monde" }
                 end
             end
         end
@@ -494,13 +553,16 @@ reconstruire = function()
         local b, c = boutons[i], cibles[i]
         if i <= n then
             b.cible = c
-            b:SetAttribute("macrotext", "/targetexact " .. c.nom)
+            b:SetAttribute("macrotext", c.genre == "inconnu" and "" or ("/targetexact " .. c.nom))
             local compte = c.compte or (c.total and (c.fait .. "/" .. c.total)) or ""
-            if c.fini then
+            if c.genre == "inconnu" then
+                b.nom:SetText("|cff909090" .. c.nom .. "|r")    -- gris = objectif sans PNJ connu
+                b.compte:SetText("|cff909090" .. compte .. "|r")
+            elseif c.fini then
                 b.nom:SetText("|cff808080" .. c.nom .. "|r")
                 b.compte:SetText("|cff00ff00" .. (compte ~= "" and compte or "ok") .. "|r")
             elseif c.genre == "pnj" then
-                b.nom:SetText("|cff60ff60" .. c.nom .. "|r")    -- vert = PNJ a qui parler
+                b.nom:SetText("|cff60ff60" .. (c.affichage or c.nom) .. "|r")    -- vert = PNJ / objet avec qui interagir
                 b.compte:SetText("|cffffff00" .. compte .. "|r")
             elseif c.detail then
                 b.nom:SetText("|cffa0d0ff" .. c.nom .. "|r")    -- bleu clair = lache un objet de quete
@@ -533,6 +595,8 @@ ev:RegisterEvent("GROUP_ROSTER_UPDATE")
 ev:RegisterEvent("QUEST_DETAIL")
 ev:RegisterEvent("QUEST_PROGRESS")
 ev:RegisterEvent("QUEST_COMPLETE")
+ev:RegisterEvent("GOSSIP_SHOW")
+ev:RegisterEvent("QUEST_GREETING")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_REMOVED")
 pcall(ev.RegisterEvent, ev, "UNIT_QUEST_LOG_CHANGED")
@@ -562,6 +626,9 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         end
     elseif event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIXE_MSG then recevoir(arg2, arg4) end
+    elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then
+        noterInteraction()
+        apprendre("npc")
     elseif event == "QUEST_DETAIL" then
         apprendrePNJ("donne")
     elseif event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then

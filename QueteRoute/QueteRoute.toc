@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: QueteRoute
+## Notes: Guide de leveling communautaire : enregistre ton parcours, suit la route agregee de tous les joueurs. /route
+## Author: harto
+## Version: 0.1
+## SavedVariables: QueteRouteDB
+## OptionalDeps: QueteGPS
+
+Route.lua
+QueteRoute.lua

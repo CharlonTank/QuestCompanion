@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: QueteGPS
+## Notes: Fleche et distance vers le point de quete (! ou ?) le plus proche. /gps
+## Author: harto
+## Version: 1.0
+## SavedVariables: QueteGPSDB
+
+QueteGPS.lua

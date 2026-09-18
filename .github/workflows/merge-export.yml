@@ -1,4 +1,4 @@
-name: Fusion des exports
+name: Fusion des contributions
 
 on:
   issues:
@@ -10,26 +10,34 @@ permissions:
 
 jobs:
   merge:
-    if: startsWith(github.event.issue.title, '[export]')
+    if: startsWith(github.event.issue.title, '[export]') || startsWith(github.event.issue.title, '[route]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fusionner l'export dans Data.lua
+      - name: Fusionner un export QueteCibles (liens quete -> mobs / PNJ)
+        if: startsWith(github.event.issue.title, '[export]')
         env:
           EXPORT_TEXT: ${{ github.event.issue.body }}
         run: node tools/merge-export.js
+
+      - name: Fusionner un parcours QueteRoute (route communautaire)
+        if: startsWith(github.event.issue.title, '[route]')
+        env:
+          EXPORT_TEXT: ${{ github.event.issue.body }}
+          CONTRIB: ${{ github.event.issue.user.login }}
+        run: node tools/merge-route.js
 
       - name: Commit et push
         id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- Data.lua; then
+          git add QueteCibles/Data.lua QueteRoute/Route.lua route-data.json 2>/dev/null || true
+          if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            git add Data.lua
-            git commit -m "Data: fusion export issue #${{ github.event.issue.number }}"
+            git commit -m "Fusion contribution issue #${{ github.event.issue.number }} (@${{ github.event.issue.user.login }})"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
@@ -40,8 +48,8 @@ jobs:
         run: |
           RESUME=$(cat merge-summary.txt)
           if [ "${{ steps.commit.outputs.changed }}" = "true" ]; then
-            gh issue comment ${{ github.event.issue.number }} --body "Merci ! Export fusionné dans Data.lua : $RESUME"
+            gh issue comment ${{ github.event.issue.number }} --body "Merci ! Contribution fusionnée : $RESUME"
             gh issue close ${{ github.event.issue.number }}
           else
-            gh issue comment ${{ github.event.issue.number }} --body "Rien de nouveau à ajouter ($RESUME). Vérifie que le texte collé est bien celui de /cibles export."
+            gh issue comment ${{ github.event.issue.number }} --body "Rien de nouveau à ajouter ($RESUME). Vérifie que le texte collé vient bien de /cibles export ou /route export."
           fi

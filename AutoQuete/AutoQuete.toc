@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: AutoQuete
+## Notes: Accepte et rend automatiquement les quetes. Maintiens Shift pour desactiver temporairement. /aq pour activer/desactiver.
+## Author: harto
+## Version: 1.0
+## SavedVariables: AutoQueteDB
+
+AutoQuete.lua
