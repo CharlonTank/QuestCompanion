@@ -49,6 +49,7 @@ local sourcesOK = {}
 
 -- Destination externe (posee par un autre addon, ex. QueteRoute) : prioritaire sur le plus proche
 local externe, candidatExterne = nil, nil
+local candidatCorps = nil   -- position du corps quand on est un fantome
 QueteGPS = QueteGPS or {}
 function QueteGPS.Definir(map, x, y, nom, typ)
     externe = { map = map, x = x, y = y, nom = nom or "Destination", type = typ or ">" }
@@ -101,6 +102,22 @@ local function collecter()
         if mapID then mesurerCarte(mapID) end
     end
     if not mapID then return end
+
+    -- ---- 00. Mort : direction du corps, prioritaire sur tout le reste
+    candidatCorps = nil
+    if UnitIsGhost("player") then
+        local cx, cy
+        if C_DeathInfo and C_DeathInfo.GetCorpseMapPosition then
+            local ok, pos = pcall(C_DeathInfo.GetCorpseMapPosition, mapID)
+            if ok and pos then cx, cy = pos.x, pos.y end
+        elseif GetCorpseMapPosition then
+            cx, cy = GetCorpseMapPosition()
+        end
+        if cx and cy and (cx > 0 or cy > 0) then
+            local wx, wy = mondeDepuisCarte(mapID, cx, cy)
+            if wx then candidatCorps = { wx = wx, wy = wy, mx = cx, my = cy, type = "+", nom = "Ton corps" } end
+        end
+    end
 
     -- ---- 0. Destination externe : convertie dans la carte courante pour la direction
     candidatExterne = nil
@@ -188,15 +205,16 @@ end
 
 local function rafraichir()
     local px, py, pmx, pmy = positionJoueur()
-    if not px or (#candidats == 0 and not candidatExterne) then
+    local prioritaire = candidatCorps or candidatExterne
+    if not px or (#candidats == 0 and not prioritaire) then
         arrow:Hide(); icon:SetText("")
-        title:SetText((#candidats == 0 and not candidatExterne) and "Aucun point de quete connu" or "Position inconnue")
+        title:SetText((#candidats == 0 and not prioritaire) and "Aucun point de quete connu" or "Position inconnue")
         dist:SetText("")
         return
     end
     local best, bestD
-    if candidatExterne then
-        best = candidatExterne
+    if prioritaire then
+        best = prioritaire
         bestD = math.sqrt((best.wx - px) ^ 2 + (best.wy - py) ^ 2)
     else
         -- Le plus proche
@@ -232,6 +250,8 @@ local function rafraichir()
         icon:SetText("|cffff6060x|r")          -- objectif en cours (mobs / objets)
     elseif best.type == ">" then
         icon:SetText("|cff00ff88>|r")          -- etape de route (QueteRoute)
+    elseif best.type == "+" then
+        icon:SetText("|cffff3030+|r")          -- ton corps
     else
         icon:SetText("|cffffff00" .. best.type .. "|r")
     end
@@ -259,6 +279,11 @@ ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 pcall(ev.RegisterEvent, ev, "QUEST_ACCEPTED")
 pcall(ev.RegisterEvent, ev, "QUEST_TURNED_IN")
 pcall(ev.RegisterEvent, ev, "QUESTLINE_UPDATE")
+ev:RegisterEvent("PLAYER_DEAD")
+ev:RegisterEvent("PLAYER_ALIVE")
+ev:RegisterEvent("PLAYER_UNGHOST")
+pcall(ev.RegisterEvent, ev, "CORPSE_IN_RANGE")
+pcall(ev.RegisterEvent, ev, "CORPSE_OUT_OF_RANGE")
 ev:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= addonName then return end
