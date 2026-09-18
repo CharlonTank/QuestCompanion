@@ -126,68 +126,150 @@ btnRetour:SetSize(70, 20)
 btnRetour:SetPoint("RIGHT", btnPasser, "LEFT", -4, 0)
 btnRetour:SetText("Retour")
 
-local etapes = {}       -- etapes calculees : { type=, qid=, q=, texte=, point= }
+local etapes = {}       -- etapes calculees : { type=, qid=, q=, point={map,x,y,pnj}, dist=, details= }
+
+-- ---- Positions : route communautaire, sinon les points de quete que le client affiche sur la carte
+local function mondeDepuisCarte(map, x, y)
+    if not (map and x and y and C_Map and C_Map.GetWorldPosFromMapPos) then return end
+    local ok, _, pos = pcall(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(x, y))
+    if ok and pos then return pos.x, pos.y end
+end
+
+local function distanceDepuisJoueur(point)
+    if not point or not point.map then return end
+    local map = C_Map.GetBestMapForUnit("player")
+    if not map then return end
+    local ok, pos = pcall(C_Map.GetPlayerMapPosition, map, "player")
+    if not ok or not pos then return end
+    local px, py = mondeDepuisCarte(map, pos.x, pos.y)
+    local tx, ty = mondeDepuisCarte(point.map, point.x, point.y)
+    if not px or not tx then return end
+    return math.sqrt((tx - px) ^ 2 + (ty - py) ^ 2)
+end
+
+local function pointClient(qid)
+    local map = C_Map.GetBestMapForUnit("player")
+    if not map or not C_QuestLog then return end
+    if C_QuestLog.GetNextWaypointForMap then
+        local ok, x, y = pcall(C_QuestLog.GetNextWaypointForMap, qid, map)
+        if ok and x and y and (x > 0 or y > 0) then return { map = map, x = x, y = y } end
+    end
+    if C_QuestLog.GetQuestsOnMap then
+        local ok, list = pcall(C_QuestLog.GetQuestsOnMap, map)
+        if ok and list then
+            for _, q in ipairs(list) do if q.questID == qid then return { map = map, x = q.x, y = q.y } end end
+        end
+    end
+end
+
+-- ---- Ce que QueteCibles a appris pour une quete (mobs qui lachent l'objet, PNJ a qui rendre)
+local function apprisPour(qid)
+    local mobs, pnjs, receveur, donneur = {}, {}, nil, nil
+    local appris = QueteCiblesDB and QueteCiblesDB.appris and QueteCiblesDB.appris[qid]
+    for nom, role in pairs(appris or {}) do
+        if role == true then mobs[#mobs + 1] = nom
+        elseif role == "pnj" then pnjs[#pnjs + 1] = nom
+        elseif role == "rend" then receveur = nom
+        elseif role == "donne" then donneur = nom end
+    end
+    table.sort(mobs); table.sort(pnjs)
+    return mobs, pnjs, receveur or donneur
+end
 
 local function decrireEtape(e)
-    local q = e.q
+    local titre = (e.q and e.q.titre) or titreQuete(e.qid)
+    local pnj = e.point and e.point.pnj
     if e.type == "prendre" then
-        return ("Prendre |cffffff00%s|r%s"):format(q.titre or titreQuete(e.qid),
-            q.prendre and q.prendre.pnj and (" chez " .. q.prendre.pnj) or "")
+        return ("Prendre |cffffff00%s|r%s"):format(titre, pnj and (" chez " .. pnj) or "")
     elseif e.type == "rendre" then
-        return ("Rendre |cffffff00%s|r%s"):format(q.titre or titreQuete(e.qid),
-            q.rendre and q.rendre.pnj and (" a " .. q.rendre.pnj) or "")
+        return ("Rendre |cffffff00%s|r%s"):format(titre, pnj and (" a " .. pnj) or "")
     else
         local reste = {}
         for _, o in ipairs(objectifs(e.qid)) do if not o.finished and o.text then reste[#reste + 1] = o.text end end
-        return ("Faire |cffffff00%s|r : %s"):format(q.titre or titreQuete(e.qid), table.concat(reste, ", "))
+        return ("Faire |cffffff00%s|r : %s"):format(titre, table.concat(reste, ", "))
     end
+end
+
+-- Ligne d'aide sous l'etape : mobs qui lachent l'objet, PNJ / objet a trouver, distance
+local function detailsEtape(e)
+    local t = {}
+    if e.type == "faire" then
+        local mobs, pnjs = apprisPour(e.qid)
+        if #mobs > 0 then t[#t + 1] = "Lache par : " .. table.concat(mobs, ", ") end
+        if #pnjs > 0 then t[#t + 1] = "Interagir avec : " .. table.concat(pnjs, ", ") end
+    end
+    if e.dist then t[#t + 1] = ("%d yards"):format(e.dist) end
+    return table.concat(t, "  |  ")
 end
 
 local function calculerEtapes()
     wipe(etapes)
     local route = (ns.route and ns.route[UnitFactionGroup("player") or "Neutral"]) or { ordre = {}, quetes = {} }
     local niveau = UnitLevel("player")
-    for _, qid in ipairs(route.ordre) do
-        local q = route.quetes[qid]
-        if q and not QueteRouteDB.passes[qid] and not queteDejaFaite(qid) then
-            local e
-            if questIndex(qid) then
+    local vues = {}
+
+    -- 1. Ton journal : quetes a rendre et quetes en cours, triees par distance (la plus proche d'abord)
+    local locales = {}
+    if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
+        for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+            local info = C_QuestLog.GetInfo(i)
+            local qid = info and not info.isHeader and info.questID
+            if qid and not QueteRouteDB.passes[qid] then
+                vues[qid] = true
+                local q = route.quetes[qid] or { titre = info.title }
+                local e
                 if queteComplete(qid) then
-                    e = { type = "rendre", qid = qid, q = q, point = q.rendre or q.prendre }
+                    e = { type = "rendre", qid = qid, q = q, point = q.rendre or pointClient(qid) or q.prendre }
+                    if e.point and not e.point.pnj then
+                        local _, _, pnj = apprisPour(qid)
+                        if pnj then e.point = { map = e.point.map, x = e.point.x, y = e.point.y, pnj = pnj } end
+                    end
                 else
                     local point
                     for k, o in ipairs(objectifs(qid)) do
                         if not o.finished and q.objectifs and q.objectifs[k] then point = q.objectifs[k] break end
                     end
-                    e = { type = "faire", qid = qid, q = q, point = point or (q.objectifs and q.objectifs[1]) }
+                    e = { type = "faire", qid = qid, q = q, point = point or pointClient(qid) or (q.objectifs and q.objectifs[1]) }
                 end
-            elseif (q.niveau or 0) <= niveau + 2 then
-                e = { type = "prendre", qid = qid, q = q, point = q.prendre }
-            end
-            if e then
-                etapes[#etapes + 1] = e
-                if #etapes >= 4 then break end
+                e.dist = distanceDepuisJoueur(e.point)
+                locales[#locales + 1] = e
             end
         end
     end
+    table.sort(locales, function(a, b)
+        if a.dist and b.dist then return a.dist < b.dist end
+        if a.dist ~= nil then return true end
+        if b.dist ~= nil then return false end
+        return a.qid < b.qid
+    end)
+    for _, e in ipairs(locales) do etapes[#etapes + 1] = e end
+
+    -- 2. La route communautaire : prochaines quetes a prendre, dans l'ordre constate chez les contributeurs
+    for _, qid in ipairs(route.ordre) do
+        local q = route.quetes[qid]
+        if q and not vues[qid] and not QueteRouteDB.passes[qid] and not queteDejaFaite(qid) and (q.niveau or 0) <= niveau + 2 then
+            local e = { type = "prendre", qid = qid, q = q, point = q.prendre }
+            e.dist = distanceDepuisJoueur(e.point)
+            etapes[#etapes + 1] = e
+        end
+    end
+    while #etapes > 5 do table.remove(etapes) end
 end
 
 local function afficher()
     calculerEtapes()
     local e = etapes[1]
     if not e then
-        local r = ns.route and ns.route[UnitFactionGroup("player") or "Neutral"]
-        if not r or #r.ordre == 0 then
-            etapeTxt:SetText("Aucune route chargee. Ton parcours est enregistre : /route export pour le partager.")
-        else
-            etapeTxt:SetText("Route terminee pour ton niveau. Continue a jouer, ton parcours enrichit la route.")
-        end
+        etapeTxt:SetText("Rien a faire : prends des quetes ! Ton parcours est enregistre (/route export pour le partager).")
         suiteTxt:SetText("")
         if QueteGPS and QueteGPS.Effacer then QueteGPS.Effacer() end
+        frame:SetHeight(70)
         return
     end
     etapeTxt:SetText("1. " .. decrireEtape(e))
     local suite = {}
+    local d = detailsEtape(e)
+    if d ~= "" then suite[#suite + 1] = "|cffa0d0ff" .. d .. "|r" end
     for i = 2, #etapes do suite[#suite + 1] = i .. ". " .. decrireEtape(etapes[i]) end
     suiteTxt:SetText(table.concat(suite, "\n"))
     if QueteGPS and QueteGPS.Definir then
@@ -197,7 +279,7 @@ local function afficher()
             QueteGPS.Effacer()
         end
     end
-    frame:SetHeight(60 + (#etapes - 1) * 14 + 20)
+    frame:SetHeight(50 + (#suite) * 14 + 26)
 end
 
 btnPasser:SetScript("OnClick", function()
