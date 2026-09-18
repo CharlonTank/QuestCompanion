@@ -215,12 +215,13 @@ local function rafraichir()
     end
     -- Direction : coordonnees de carte (x vers l'est, y vers le sud), corrigees du ratio de la carte.
     -- GetPlayerFacing : 0 = nord, augmente dans le sens anti-horaire (pi/2 = ouest).
+    local rel = 0
     if best.mx and best.my then
         local facing = GetPlayerFacing() or 0
         local versEst = (best.mx - pmx) * largeurCarte
         local versSud = (best.my - pmy) * hauteurCarte
         local bearing = math.atan2(-versEst, -versSud)   -- ouest positif, nord positif
-        local rel = bearing - facing
+        rel = bearing - facing
         if QueteGPSDB.miroir then rel = -rel end
         arrow:SetRotation(rel)
         arrow:Show()
