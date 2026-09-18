@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: QueteCibles
+## Notes: Liste des cibles de tes quetes en cours, cliquables pour les cibler (style RestedXP). /cibles
+## Author: harto
+## Version: 1.1
+## SavedVariables: QueteCiblesDB
+
+Data.lua
+QueteCibles.lua

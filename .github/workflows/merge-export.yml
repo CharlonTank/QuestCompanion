@@ -1,0 +1,47 @@
+name: Fusion des exports
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  merge:
+    if: startsWith(github.event.issue.title, '[export]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fusionner l'export dans Data.lua
+        env:
+          EXPORT_TEXT: ${{ github.event.issue.body }}
+        run: node tools/merge-export.js
+
+      - name: Commit et push
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- Data.lua; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git add Data.lua
+            git commit -m "Data: fusion export issue #${{ github.event.issue.number }}"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commenter et fermer l'issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RESUME=$(cat merge-summary.txt)
+          if [ "${{ steps.commit.outputs.changed }}" = "true" ]; then
+            gh issue comment ${{ github.event.issue.number }} --body "Merci ! Export fusionné dans Data.lua : $RESUME"
+            gh issue close ${{ github.event.issue.number }}
+          else
+            gh issue comment ${{ github.event.issue.number }} --body "Rien de nouveau à ajouter ($RESUME). Vérifie que le texte collé est bien celui de /cibles export."
+          fi
