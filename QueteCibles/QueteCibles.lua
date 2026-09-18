@@ -542,6 +542,9 @@ local function collecter()
                     if not o.fini or QueteCiblesDB.montrerFinis then
                         ajouter({ nom = nom, quete = q.titre, fini = o.fini, fait = o.fait or fait, total = o.total or total, genre = "mob" })
                     end
+                    -- Le vrai nom du mob peut differer ("Enchanted Skyhopper" dans l'objectif, "Skyhopper" en jeu) :
+                    -- les mobs appris via tooltip se rattachent a cet objectif tant qu'il n'est pas fini
+                    if not o.fini and not restant then restant = { texte = nom, fait = o.fait or fait, total = o.total or total, kill = true } end
                 elseif nom then
                     -- 3. Description d'objectif (objet a ramasser, interaction...) : pas un nom de cible
                     if not o.fini then
@@ -556,7 +559,7 @@ local function collecter()
             local pnjConnu = false
             for nom, role in pairs(appris) do
                 if role == true and restant and not nomsKill[nom] then
-                    ajouter({ nom = nom, quete = q.titre, detail = "Lache : " .. restant.texte,
+                    ajouter({ nom = nom, quete = q.titre, detail = (restant.kill and "Compte pour : " or "Lache : ") .. restant.texte,
                         fait = restant.fait, total = restant.total, genre = "mob" })
                 elseif role == "pnj" then
                     -- Un PNJ/objet appris ne concerne que les objectifs d'interaction, jamais un objet a ramasser
