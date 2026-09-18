@@ -462,7 +462,8 @@ local function collecter()
                     detail = receveur and "Rendre la quete" or "Rendre la quete (PNJ qui l'a donnee)", compte = "?" }
             end
         else
-            local restant = nil
+            local restant = nil       -- premier objectif "objet a ramasser" non termine (pour les mobs appris)
+            local nomsKill = {}       -- mobs deja objectifs "tuer" de cette quete, finis ou non
             local descriptions = {}   -- objectifs d'interaction ("Learn about the cultists' plans")
             local etats = etatsObjectifs[q.id] or {}
             for k, o in ipairs(q.objectifs) do
@@ -479,15 +480,15 @@ local function collecter()
                     if not o.fini then pnjs[#pnjs + 1] = { nom = pnj, quete = q.titre, genre = "pnj", detail = o.texte } end
                 elseif nom and (estKill or (o.type == "monster" and ressembleNomCreature(nom))) then
                     -- 2. "tuer X" : vrai nom de creature
+                    nomsKill[nom] = true
                     if not o.fini or QueteCiblesDB.montrerFinis then
                         ajouter({ nom = nom, quete = q.titre, fini = o.fini, fait = o.fait or fait, total = o.total or total, genre = "mob" })
                     end
-                    if not o.fini and not restant then restant = { texte = nom, fait = o.fait or fait, total = o.total or total } end
                 elseif nom then
                     -- 3. Description d'objectif (objet a ramasser, interaction...) : pas un nom de cible
                     if not o.fini then
                         descriptions[#descriptions + 1] = { texte = nom, fait = o.fait or fait, total = o.total or total, type = o.type }
-                        if not restant then restant = descriptions[#descriptions] end
+                        if not restant and o.type == "item" then restant = descriptions[#descriptions] end
                     end
                 end
             end
@@ -496,7 +497,7 @@ local function collecter()
             -- 4. Appris : mobs qui comptent pour la quete (objets a ramasser) et PNJ d'interaction
             local pnjConnu = false
             for nom, role in pairs(appris) do
-                if role == true and restant then
+                if role == true and restant and not nomsKill[nom] then
                     ajouter({ nom = nom, quete = q.titre, detail = "Lache : " .. restant.texte,
                         fait = restant.fait, total = restant.total, genre = "mob" })
                 elseif role == "pnj" then
