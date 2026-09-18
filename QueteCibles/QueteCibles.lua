@@ -538,32 +538,13 @@ local function peutMarquer()
     return UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
 end
 
-local function marquer()
-    if not peutMarquer() or not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
-    if InCombatLockdown() then return end   -- SetRaidTarget est bloque en combat pour les addons
-    local iconeParNom = {}
-    for i = 1, MAX_BTN do
-        local b = boutons[i]
-        if b:IsShown() and b.cible and b.cible.genre ~= "inconnu" and ICONES[i] then iconeParNom[b.cible.nom] = ICONES[i] end
-    end
-    -- La cible actuelle en premier : elle garde priorite sur un autre mob du meme nom
-    local units = {}
-    if UnitExists("target") then units[#units + 1] = "target" end
-    for _, np in ipairs(C_NamePlate.GetNamePlates()) do
-        if np.namePlateUnitToken then units[#units + 1] = np.namePlateUnitToken end
-    end
-    local pris = {}   -- icone deja posee sur un mob visible
-    for _, u in ipairs(units) do
-        local icone = iconeParNom[UnitName(u) or ""]
-        if icone and GetRaidTargetIndex(u) == icone and not UnitIsDead(u) then pris[icone] = true end
-    end
-    for _, u in ipairs(units) do
-        local icone = iconeParNom[UnitName(u) or ""]
-        if icone and not pris[icone] and not UnitIsDead(u) and GetRaidTargetIndex(u) ~= icone then
-            pcall(SetRaidTarget, u, icone)
-            pris[icone] = true
-        end
-    end
+-- Sur ce client, SetRaidTarget est reserve a l'interface Blizzard : le marqueur est donc pose par la macro
+-- du bouton (/tm), executee par ton clic, ce qui est autorise. Voir reconstruire().
+local function macroPour(c, i)
+    if c.genre == "inconnu" then return "" end
+    local m = "/targetexact " .. c.nom
+    if peutMarquer() and ICONES[i] then m = m .. "\n/tm " .. ICONES[i] end
+    return m
 end
 
 local function rafraichirCouleurs()
@@ -577,7 +558,6 @@ local function rafraichirCouleurs()
             end
         end
     end
-    marquer()
 end
 
 -- ================================================================ Reconstruction (hors combat uniquement)
@@ -590,7 +570,7 @@ reconstruire = function()
         local b, c = boutons[i], cibles[i]
         if i <= n then
             b.cible = c
-            b:SetAttribute("macrotext", c.genre == "inconnu" and "" or ("/targetexact " .. c.nom))
+            b:SetAttribute("macrotext", macroPour(c, i))
             local compte = c.compte or (c.total and (c.fait .. "/" .. c.total)) or ""
             if c.genre == "inconnu" then
                 b.nom:SetText("|cff909090" .. c.nom .. "|r")    -- gris = objectif sans PNJ connu
@@ -746,7 +726,8 @@ local function commande(msg)
         frame:ClearAllPoints(); frame:SetPoint("RIGHT", UIParent, "RIGHT", -20, 100)
     elseif action == "marque" then
         QueteCiblesDB.marque = (QueteCiblesDB.marque == false) and true or false
-        print(PREFIX .. "Marqueurs sur les cibles visibles : " .. (QueteCiblesDB.marque and "actifs" or "coupes"))
+        print(PREFIX .. "Marqueur pose au clic : " .. (QueteCiblesDB.marque and "actif" or "coupe"))
+        reconstruire()
     elseif action == "finis" then
         QueteCiblesDB.montrerFinis = not QueteCiblesDB.montrerFinis
         print(PREFIX .. "Objectifs termines : " .. (QueteCiblesDB.montrerFinis and "affiches en gris" or "masques"))
