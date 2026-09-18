@@ -176,11 +176,40 @@ local function apprisPour(qid)
     return mobs, pnjs, receveur or donneur
 end
 
+-- PNJ (non joueurs) visibles autour de toi : barres de nom, cible, survol
+local function pnjVisibles()
+    local t = {}
+    local function voir(u)
+        if UnitExists(u) and not UnitIsPlayer(u) and not UnitCanAttack("player", u) then
+            local n = UnitName(u); if n then t[n] = true end
+        end
+    end
+    voir("target"); voir("mouseover")
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        for _, np in ipairs(C_NamePlate.GetNamePlates()) do
+            if np.namePlateUnitToken then voir(np.namePlateUnitToken) end
+        end
+    end
+    return t
+end
+
+-- Quetes dont ce PNJ est le donneur d'apres QueteCibles (role "donne") : qid -> titre
+local function donneursConnus(nom)
+    local res = {}
+    local appris = QueteCiblesDB and QueteCiblesDB.appris
+    if not appris then return res end
+    for qid, noms in pairs(appris) do
+        if type(qid) == "number" and noms[nom] == "donne" then res[qid] = titreQuete(qid) end
+    end
+    return res
+end
+
 local function decrireEtape(e)
     local titre = (e.q and e.q.titre) or titreQuete(e.qid)
     local pnj = e.point and e.point.pnj
     if e.type == "prendre" then
-        return ("Prendre |cffffff00%s|r%s"):format(titre, pnj and (" chez " .. pnj) or "")
+        return ("%sPrendre |cffffff00%s|r%s"):format(e.visible and "|cff00ff00[PNJ en vue]|r " or "",
+            titre, pnj and (" chez " .. pnj) or "")
     elseif e.type == "rendre" then
         return ("Rendre |cffffff00%s|r%s"):format(titre, pnj and (" a " .. pnj) or "")
     else
@@ -250,16 +279,46 @@ local function calculerEtapes()
     end)
     for _, e in ipairs(locales) do etapes[#etapes + 1] = e end
 
-    -- 2. La route communautaire : prochaines quetes a prendre, dans l'ordre constate chez les contributeurs
+    -- 2. La route communautaire : quetes a prendre. Une quete a portee (rayon) ou dont le PNJ donneur est
+    --    visible autour de toi passe EN PREMIER : on la prend avant de continuer.
+    local rayon = QueteRouteDB.rayon or 200
+    local visibles = pnjVisibles()
+    local proches, plusTard = {}, {}
     for _, qid in ipairs(route.ordre) do
         local q = route.quetes[qid]
         if q and not vues[qid] and not QueteRouteDB.passes[qid] and not queteDejaFaite(qid) and (q.niveau or 0) <= niveau + 2 then
             local e = { type = "prendre", qid = qid, q = q, point = q.prendre }
             e.dist = distanceDepuisJoueur(e.point)
-            etapes[#etapes + 1] = e
+            local pnj = q.prendre and q.prendre.pnj
+            if pnj and visibles[pnj] then
+                e.visible = true
+                proches[#proches + 1] = e
+            elseif e.dist and e.dist <= rayon then
+                proches[#proches + 1] = e
+            else
+                plusTard[#plusTard + 1] = e
+            end
         end
     end
-    while #etapes > 5 do table.remove(etapes) end
+    -- PNJ donneurs connus de QueteCibles (nom seul, sans position) visibles autour de toi
+    for nom in pairs(visibles) do
+        for qid, titre in pairs(donneursConnus(nom)) do
+            if not vues[qid] and not QueteRouteDB.passes[qid] and not queteDejaFaite(qid) and not route.quetes[qid] then
+                proches[#proches + 1] = { type = "prendre", qid = qid, q = { titre = titre }, point = { pnj = nom }, visible = true }
+            end
+        end
+    end
+    table.sort(proches, function(a, b)
+        if a.visible ~= b.visible then return a.visible == true end
+        return (a.dist or 1e9) < (b.dist or 1e9)
+    end)
+    -- Ordre final : quetes a prendre a portee, puis ton journal par distance, puis le reste de la route
+    local final = {}
+    for _, e in ipairs(proches) do final[#final + 1] = e end
+    for _, e in ipairs(etapes) do final[#final + 1] = e end
+    for _, e in ipairs(plusTard) do final[#final + 1] = e end
+    wipe(etapes)
+    for i = 1, math.min(#final, 5) do etapes[i] = final[i] end
 end
 
 -- Points "quete a prendre" connus de la communaute, pour QueteGPS (quetes pas faites, pas dans le journal, niveau ok)
@@ -378,6 +437,11 @@ ev:RegisterEvent("QUEST_TURNED_IN")
 ev:RegisterEvent("QUEST_LOG_UPDATE")
 ev:RegisterEvent("PLAYER_LEVEL_UP")
 pcall(ev.RegisterEvent, ev, "QUEST_REMOVED")
+pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
+ev:RegisterEvent("PLAYER_TARGET_CHANGED")
+ev:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+ev:RegisterEvent("ZONE_CHANGED")
+ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
 local attente = 0
 ev:SetScript("OnEvent", function(self, event, arg1, arg2)
@@ -421,11 +485,17 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
             etatObjectifs[arg1] = nil
             attente = 0.5
         end
-    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "PLAYER_LEVEL_UP" then
+    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "PLAYER_LEVEL_UP"
+        or event == "NAME_PLATE_UNIT_ADDED" or event == "PLAYER_TARGET_CHANGED" or event == "UPDATE_MOUSEOVER_UNIT"
+        or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" then
         attente = 0.5
     end
 end)
+local periodique = 0
 frame:SetScript("OnUpdate", function(self, elapsed)
+    -- Recalcul periodique : les distances changent quand tu te deplaces (quete a prendre qui entre dans le rayon)
+    periodique = periodique + elapsed
+    if periodique > 4 then periodique = 0; if attente <= 0 then attente = 0.01 end end
     if attente > 0 then
         attente = attente - elapsed
         if attente <= 0 and cle then
@@ -449,6 +519,11 @@ SlashCmdList["QUETEROUTE"] = function(msg)
         wipe(QueteRouteDB.passes); wipe(QueteRouteDB.ordrePasses)
         QueteRouteDB.pos = nil
         frame:ClearAllPoints(); frame:SetPoint("TOP", UIParent, "TOP", 0, -120)
+        afficher()
+    elseif msg:match("^rayon") then
+        local n = tonumber(msg:match("%d+"))
+        if n then QueteRouteDB.rayon = n end
+        print(PREFIX .. "Rayon de detour pour une quete a prendre : " .. (QueteRouteDB.rayon or 200) .. " yards  (/route rayon 300)")
         afficher()
     elseif msg == "enregistrer" then
         QueteRouteDB.enregistrer = (QueteRouteDB.enregistrer == false) and true or false
