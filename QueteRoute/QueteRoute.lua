@@ -221,7 +221,13 @@ local function calculerEtapes()
                 if queteComplete(qid) then
                     e = { type = "rendre", qid = qid, q = q, point = q.rendre or pointClient(qid) or q.prendre }
                     if e.point and not e.point.pnj then
-                        local _, _, pnj = apprisPour(qid)
+                        local pnj
+                        if QueteCibles_PNJRendu then
+                            local ok, _, texte = pcall(GetQuestLogQuestText, i)
+                            pnj = QueteCibles_PNJRendu(qid, ok and texte or nil)
+                        else
+                            local _, _, p = apprisPour(qid); pnj = p
+                        end
                         if pnj then e.point = { map = e.point.map, x = e.point.x, y = e.point.y, pnj = pnj } end
                     end
                 else

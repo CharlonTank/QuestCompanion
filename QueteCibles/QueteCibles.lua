@@ -127,6 +127,10 @@ local function quetesJournal()
             local info = C_QuestLog.GetInfo(i)
             if info and not info.isHeader and info.questID then
                 local q = { id = info.questID, titre = info.title, complete = C_QuestLog.IsComplete(info.questID), objectifs = {} }
+                if GetQuestLogQuestText then
+                    local ok, _, texte = pcall(GetQuestLogQuestText, i)
+                    if ok and type(texte) == "string" then q.texte = texte end
+                end
                 local objs = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(info.questID)
                 for _, o in ipairs(objs or {}) do
                     q.objectifs[#q.objectifs + 1] = { texte = o.text, type = o.type, fini = o.finished,
@@ -140,6 +144,11 @@ local function quetesJournal()
             local t, _, _, isHeader, _, isComplete, _, qid = GetQuestLogTitle(i)
             if not isHeader then
                 local q = { id = qid or t, titre = t, complete = (isComplete == 1), objectifs = {} }
+                if SelectQuestLogEntry and GetQuestLogQuestText then
+                    SelectQuestLogEntry(i)
+                    local _, texte = GetQuestLogQuestText()
+                    q.texte = texte
+                end
                 for j = 1, GetNumQuestLeaderBoards(i) do
                     local texte, typ, fini = GetQuestLogLeaderBoard(j, i)
                     q.objectifs[#q.objectifs + 1] = { texte = texte, type = typ, fini = fini }
@@ -270,6 +279,35 @@ local function ressembleNomCreature(s)
         if lettre and lettre:match("%l") and not PETITS_MOTS[mot:lower()] then return false end
     end
     return true
+end
+
+-- Nom du PNJ a qui rendre, lu dans le texte d'objectif de la quete
+-- ("Deliver the Signet to Talaanis Shadowsong in Valanaar", "Return to Marshal Dughan", "Speak with X")
+local MOTIFS_RENDU = { "[Rr]eturn to (.-)[%.,]", "[Rr]eturn to (.-) in ", "[Rr]eturn to (.-) at ", "[Rr]eport to (.-)[%.,]",
+    "[Rr]eport to (.-) in ", "[Ss]peak with (.-)[%.,]", "[Ss]peak to (.-)[%.,]", "[Tt]alk to (.-)[%.,]",
+    " to (.-) in ", " to (.-) at ", " to (.-)[%.,]", "[Rr]etourne[rz]? (?:voir|aupres de) (.-)[%.,]", "[Aa]pporte[rz]? .- [aà] (.-)[%.,]" }
+local function pnjDepuisTexte(texte)
+    if not texte or texte == "" then return end
+    texte = texte .. "."
+    for _, motif in ipairs(MOTIFS_RENDU) do
+        local nom = texte:match(motif)
+        if nom then
+            nom = strtrim(nom)
+            if nom ~= "" and #nom <= 40 and not nom:find("^the ") and ressembleNomCreature(nom) then return nom end
+        end
+    end
+end
+
+-- Meilleur PNJ connu pour rendre une quete : appris ("rend"), sinon lu dans le texte, sinon celui qui l'a donnee
+function QueteCibles_PNJRendu(qid, texte)
+    local receveur, donneur
+    for nom, role in pairs((QueteCiblesDB and QueteCiblesDB.appris and QueteCiblesDB.appris[qid]) or {}) do
+        if role == "rend" then receveur = nom elseif role == "donne" then donneur = nom end
+    end
+    if receveur then return receveur, "appris" end
+    local lu = pnjDepuisTexte(texte)
+    if lu then return lu, "texte" end
+    if donneur then return donneur, "donneur" end
 end
 
 -- ================================================================ Partage entre joueurs (messages d'addon)
@@ -452,14 +490,13 @@ local function collecter()
         local appris = QueteCiblesDB.appris[q.id] or {}
 
         if q.complete then
-            -- Quete terminee : le PNJ a qui la rendre (sinon celui qui l'a donnee, souvent le meme)
-            local receveur, donneur
-            for nom, role in pairs(appris) do
-                if role == "rend" then receveur = nom elseif role == "donne" then donneur = nom end
-            end
-            if receveur or donneur then
-                pnjs[#pnjs + 1] = { nom = receveur or donneur, quete = q.titre, genre = "pnj",
-                    detail = receveur and "Rendre la quete" or "Rendre la quete (PNJ qui l'a donnee)", compte = "?" }
+            -- Quete terminee : le PNJ a qui la rendre (appris, sinon lu dans le texte, sinon celui qui l'a donnee)
+            local nom, source = QueteCibles_PNJRendu(q.id, q.texte)
+            if nom then
+                local detail = (source == "appris" and "Rendre la quete")
+                    or (source == "texte" and ("Rendre la quete : " .. (q.texte or "")))
+                    or "Rendre la quete (PNJ qui l'a donnee, a verifier)"
+                pnjs[#pnjs + 1] = { nom = nom, quete = q.titre, genre = "pnj", detail = detail, compte = "?" }
             end
         else
             local restant = nil       -- premier objectif "objet a ramasser" non termine (pour les mobs appris)
