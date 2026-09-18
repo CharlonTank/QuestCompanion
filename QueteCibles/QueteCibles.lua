@@ -530,6 +530,41 @@ local function estVisible(nom)
     return false
 end
 
+-- ---- Marqueurs de raid sur la tete des cibles visibles (crane pour la 1re ligne, croix pour la 2e, etc.)
+local ICONES = { 8, 7, 6, 5, 4, 3, 2, 1 }
+local function peutMarquer()
+    if QueteCiblesDB.marque == false then return false end
+    if not IsInGroup() then return true end
+    return UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
+end
+
+local function marquer()
+    if not peutMarquer() or not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
+    local iconeParNom = {}
+    for i = 1, MAX_BTN do
+        local b = boutons[i]
+        if b:IsShown() and b.cible and b.cible.genre ~= "inconnu" and ICONES[i] then iconeParNom[b.cible.nom] = ICONES[i] end
+    end
+    -- La cible actuelle en premier : elle garde priorite sur un autre mob du meme nom
+    local units = {}
+    if UnitExists("target") then units[#units + 1] = "target" end
+    for _, np in ipairs(C_NamePlate.GetNamePlates()) do
+        if np.namePlateUnitToken then units[#units + 1] = np.namePlateUnitToken end
+    end
+    local pris = {}   -- icone deja posee sur un mob visible
+    for _, u in ipairs(units) do
+        local icone = iconeParNom[UnitName(u) or ""]
+        if icone and GetRaidTargetIndex(u) == icone and not UnitIsDead(u) then pris[icone] = true end
+    end
+    for _, u in ipairs(units) do
+        local icone = iconeParNom[UnitName(u) or ""]
+        if icone and not pris[icone] and not UnitIsDead(u) and GetRaidTargetIndex(u) ~= icone then
+            pcall(SetRaidTarget, u, icone)
+            pris[icone] = true
+        end
+    end
+end
+
 local function rafraichirCouleurs()
     for i = 1, MAX_BTN do
         local b = boutons[i]
@@ -541,6 +576,7 @@ local function rafraichirCouleurs()
             end
         end
     end
+    marquer()
 end
 
 -- ================================================================ Reconstruction (hors combat uniquement)
@@ -707,6 +743,9 @@ local function commande(msg)
     elseif action == "reset" then
         QueteCiblesDB.pos = nil
         frame:ClearAllPoints(); frame:SetPoint("RIGHT", UIParent, "RIGHT", -20, 100)
+    elseif action == "marque" then
+        QueteCiblesDB.marque = (QueteCiblesDB.marque == false) and true or false
+        print(PREFIX .. "Marqueurs sur les cibles visibles : " .. (QueteCiblesDB.marque and "actifs" or "coupes"))
     elseif action == "finis" then
         QueteCiblesDB.montrerFinis = not QueteCiblesDB.montrerFinis
         print(PREFIX .. "Objectifs termines : " .. (QueteCiblesDB.montrerFinis and "affiches en gris" or "masques"))
@@ -715,7 +754,7 @@ local function commande(msg)
         QueteCiblesDB.shown = not QueteCiblesDB.shown
         if QueteCiblesDB.shown then frame:Show() else frame:Hide() end
         print(PREFIX .. (QueteCiblesDB.shown and "affiche" or "masque")
-            .. "  (/cibles add|del|clear, finis, oubli, export, import, sync, partage, stats, reset)")
+            .. "  (/cibles add|del|clear, finis, marque, oubli, export, import, sync, partage, stats, reset)")
     end
 end
 SLASH_QUETECIBLES1 = "/cibles"
