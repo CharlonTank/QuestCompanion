@@ -19,7 +19,7 @@ for (const bloc of texte.split(/R1;/).slice(1)) {
     const parts = bloc.split("|").map((s) => s.split("\n")[0].trim()).filter(Boolean);
     const [perso, faction] = parts[0].split(";");
     if (!perso) continue;
-    const titre = (t) => (t || "").replace(/;\d+$/, "").replace(/`+$/, "").trim();
+    const titre = (t) => { const s = (t || "").replace(/;\d+$/, "").replace(/`+$/, "").trim(); return /^\d*$/.test(s) ? "" : s; };
     const events = [];
     for (const p of parts.slice(1)) {
         const f = p.split(";");
@@ -104,7 +104,7 @@ for (const faction of Object.keys(factions).sort()) {
             return [i, p];
         }).filter(([, p]) => p);
         // Titres deja stockes avec un ";0" parasite (anciens exports) : nettoyes ici aussi
-        const titres = Q.titres.map((t) => t.replace(/;\d+$/, "").replace(/\n[\s\S]*$/, "").replace(/`+$/, "").trim()).filter(Boolean);
+        const titres = Q.titres.map((t) => t.replace(/;\d+$/, "").replace(/\n[\s\S]*$/, "").replace(/`+$/, "").trim()).filter((t) => t && !/^\d+$/.test(t));
         quetes.push({ qid: +qid, titre: plusFrequent(titres), niveau, rang, contributeurs: new Set(Q.A.map((e) => e.lvl + ":" + e.map)).size || Q.T.length,
             prendre: pointMedian(Q.A), rendre: pointMedian(Q.T), objectifs });
     }
