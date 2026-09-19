@@ -3,10 +3,9 @@
 local _, ns = ...
 ns.route = {
     ["Horde"] = {
-        ordre = { 844, 869 },
+        ordre = { 887 },
         quetes = {
-            [844] = { titre = "Quete 844", niveau = 0, contributeurs = 0, prendre = nil, rendre = nil, objectifs = { [1] = { map = 1413, x = 0.607, y = 0.353 } } },
-            [869] = { titre = "Quete 869", niveau = 0, contributeurs = 0, prendre = nil, rendre = nil, objectifs = { [1] = { map = 1413, x = 0.582, y = 0.355, points = { { map = 1413, x = 0.582, y = 0.355, n = 1 }, { map = 1413, x = 0.562, y = 0.354, n = 1 } } } } },
+            [887] = { titre = "Quete 887", niveau = 0, contributeurs = 0, prendre = nil, rendre = nil, objectifs = { [1] = { map = 1413, x = 0.64, y = 0.455, points = { { map = 1413, x = 0.64, y = 0.455, n = 1 }, { map = 1413, x = 0.64, y = 0.468, n = 1 } } } } },
         },
         niveaux = {  },
         services = {  },
