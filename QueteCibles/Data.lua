@@ -1,7 +1,31 @@
 -- Base partagee, livree avec l'addon. Fusionnee dans la base apprise au chargement.
 -- Format : [questID] = { "Nom du mob", "@PNJ a qui parler", "!PNJ qui donne la quete", "?PNJ a qui la rendre" }
--- Pour l'enrichir : /cibles export en jeu, puis coller ici le contenu.
+-- Genere automatiquement par tools/merge-export.js a partir des issues [export].
 local _, ns = ...
 ns.seed = {
-    -- exemple : [123] = { "Highlands Bandit" },
+    [123] = { "Highlands Bandit" },
+    [92516] = { "?Teeri Wellwind", "Hippogryph Matriarch", "Hippogryph Protector", "Hippogryph Youth" },
+    [92550] = { "?Constable Aonda", "Al'Aketh Stormcaller", "Commander Cyclas", "Living Lightning" },
+    [92551] = { "?Danarii Bellowveil", "Al'Aketh Stormcaller" },
+    [92579] = { "!Constable Aonda", "?Valennia Stormfist" },
+    [92679] = { "@Aamelia Windfield", "@Alvarion Windfield" },
+    [92682] = { "?Aamelia Windfield", "Hungry Bandit" },
+    [92683] = { "?Aamelia Windfield" },
+    [92684] = { "?Aamelia Windfield", "Ornery Galestrider" },
+    [92685] = { "Bandit Highwayman" },
+    [92698] = { "?Aamelia Windfield" },
+    [92700] = { "?Ayessa Dawnsinger" },
+    [92708] = { "?Ayessa Dawnsinger" },
+    [93317] = { "@Windsong Crawler" },
+    [93318] = { "Vulgara the Insatiable" },
+    [93319] = { "Highlands Bandit" },
+    [93735] = { "?Riaani Nightwind" },
+    [93737] = { "@Riaani Nightwind" },
+    [93926] = { "@Peacekeeper Vaaniel" },
+    [93927] = { "?Constable Aonda", "Skypriest Aanders" },
+    [93948] = { "?Talaanis Shadowsong" },
+    [93949] = { "?Valennia Stormfist" },
+    [93951] = { "?Taleen Shimmerthread" },
+    [94484] = { "?Elegael Thornpaw" },
+    [94486] = { "Shadowgale Shriekling" },
 }
