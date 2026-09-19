@@ -235,17 +235,17 @@ local function rafraichir()
         best = prioritaire
         bestD = math.sqrt((best.wx - px) ^ 2 + (best.wy - py) ^ 2)
     else
-        -- Priorite : la quete en cours de farm (progres dans les 10 dernieres minutes) d'abord ; puis la plus proche,
-        -- un rendu ou une prise comptant double face a un objectif : on finit ce qu'on fait avant d'aller rendre,
-        -- sauf si le PNJ est vraiment tout pres
-        local enCours = QueteRoute_QueteEnCours and QueteRoute_QueteEnCours()
+        -- Priorite : les quetes dont tu es dans la zone d'objectif d'abord (signal du jeu + cibles visibles, sans
+        -- timer), la plus proche en premier ; puis les autres par distance, un rendu ou une prise comptant double
+        -- (on reste la ou il y a quelque chose a faire avant d'aller rendre, sauf si le PNJ est vraiment tout pres)
+        local enZone = (QueteRoute_QuetesEnZone and QueteRoute_QuetesEnZone()) or {}
         local bestScore
         for _, c in ipairs(candidats) do
             if not QueteGPSDB.filtre or QueteGPSDB.filtre == c.type then
                 local dx, dy = c.wx - px, c.wy - py
                 local d = math.sqrt(dx * dx + dy * dy)
                 local score = d * (c.type == "o" and 1 or 2)
-                if enCours and c.qid == enCours and c.type == "o" then score = -1 end
+                if c.qid and enZone[c.qid] then score = -1e9 + d end
                 if not bestScore or score < bestScore then best, bestD, bestScore = c, d, score end
             end
         end

@@ -543,6 +543,7 @@ local function collecter()
     local niveauJoueur = UnitLevel("player")
     for _, q in ipairs(quetesJournal()) do
         titresQuetes[q.titre] = q.id
+        local debutC, debutP = #cibles, #pnjs   -- pour rattacher les cibles de cette quete a son questID
         local appris = QueteCiblesDB.appris[q.id] or {}
         -- Quete orange ou rouge (3 niveaux au-dessus ou plus) : pas de cibles proposees (/cibles difficiles pour les voir)
         local tropDure = not q.complete and not QueteCiblesDB.difficiles and q.niveau and (q.niveau - niveauJoueur) >= 3
@@ -619,10 +620,30 @@ local function collecter()
                 end
             end
         end
+        for k = debutC + 1, #cibles do cibles[k].qid = cibles[k].qid or q.id end
+        for k = debutP + 1, #pnjs do pnjs[k].qid = pnjs[k].qid or q.id end
     end
     for _, p in ipairs(pnjs) do ajouter(p) end
 end
 
+
+-- Quetes dont au moins une cible est visible autour de toi (barres de nom ou cible actuelle) : { [questID] = true }
+-- Utilise par QueteRoute / QueteGPS pour savoir que tu es dans une zone ou il y a quelque chose a faire
+function QueteCibles_QuetesAvecCiblesVisibles()
+    local res = {}
+    local parNom = {}
+    for _, c in ipairs(cibles) do if c.qid and c.genre ~= "inconnu" and not c.fini then parNom[c.nom] = c.qid end end
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        for _, np in ipairs(C_NamePlate.GetNamePlates()) do
+            local u = np.namePlateUnitToken
+            local n = u and UnitName(u)
+            if n and parNom[n] and not UnitIsDead(u) then res[parNom[n]] = true end
+        end
+    end
+    local t = UnitExists("target") and UnitName("target")
+    if t and parNom[t] and not UnitIsDead("target") then res[parNom[t]] = true end
+    return res
+end
 -- ================================================================ Visibilite (nameplates + cible actuelle)
 local function estVisible(nom)
     if UnitExists("target") and UnitName("target") == nom then return true end

@@ -55,15 +55,22 @@ end
 local cle                    -- "Perso-Royaume"
 local pnjDialogue = {}       -- questID -> nom du PNJ vu dans le dialogue de quete
 local etatObjectifs = {}     -- questID -> { [i] = { fini=, fait= } }
-local dernierProgres = {}    -- questID -> GetTime() du dernier progres d'objectif
-
--- Quete "en cours de farm" : progres dans les 10 dernieres minutes et pas encore terminee. Prioritaire partout.
-function QueteRoute_QueteEnCours()
-    local best, quand
-    for qid, t in pairs(dernierProgres) do
-        if GetTime() - t < 600 and questIndex(qid) and not queteComplete(qid) and (not quand or t > quand) then best, quand = qid, t end
+-- Quetes "en zone" : tu es dans leur zone d'objectif. Deux signaux, sans aucun timer :
+--  1. le jeu marque la quete comme proche (hasLocalPOI, ce que le suivi de quetes utilise pour la mettre en avant)
+--  2. des cibles de cette quete sont visibles autour de toi (barres de nom, via QueteCibles)
+-- Retourne un ensemble { [questID] = true }
+function QueteRoute_QuetesEnZone()
+    local res = {}
+    if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
+        for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+            local info = C_QuestLog.GetInfo(i)
+            if info and not info.isHeader and info.questID and info.hasLocalPOI then res[info.questID] = true end
+        end
     end
-    return best
+    if QueteCibles_QuetesAvecCiblesVisibles then
+        for qid in pairs(QueteCibles_QuetesAvecCiblesVisibles()) do res[qid] = true end
+    end
+    return res
 end
 
 local function journal()
@@ -178,7 +185,6 @@ local function surveillerObjectifs()
                     -- On note la position a chaque progres (objet ramasse, mob tue, PNJ trouve) et a la fin,
                     -- en evitant les doublons trop proches : c'est ce qui permet de tracer un parcours
                     if (o.finished and not e.fini) or fait > e.fait then
-                        dernierProgres[qid] = GetTime()
                         local map, x, y = position()
                         local dx, dy = (x or 0) - (e.x or -1), (y or 0) - (e.y or -1)
                         local loin = (map ~= e.map) or (dx * dx + dy * dy) > 0.003 * 0.003
@@ -572,13 +578,13 @@ local function calculerEtapes()
             end
         end
     end
-    -- Priorite : la quete en cours de farm d'abord ; puis par distance, un rendu comptant double
-    -- (on finit ce qu'on fait avant d'aller rendre, sauf si le PNJ est vraiment tout pres)
-    local enCours = QueteRoute_QueteEnCours()
+    -- Priorite : les quetes dont tu es dans la zone d'abord (la plus proche en premier) ; puis les autres par
+    -- distance, un rendu comptant double (on reste ou il y a quelque chose a faire avant d'aller rendre)
+    local enZone = QueteRoute_QuetesEnZone()
     for _, e in ipairs(locales) do
-        if e.qid == enCours then e.score = -1
-        elseif e.dist then e.score = e.dist * (e.type == "rendre" and 2 or 1)
-        else e.score = 1e9 end
+        local d = e.dist or 1e8
+        if enZone[e.qid] then e.score = -1e9 + d
+        else e.score = d * (e.type == "rendre" and 2 or 1) end
     end
     table.sort(locales, function(a, b)
         if a.score ~= b.score then return a.score < b.score end
