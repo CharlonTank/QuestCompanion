@@ -5,6 +5,5 @@
 ## Version: 1.1
 ## SavedVariables: QueteCiblesDB
 
-Bindings.xml
 Data.lua
 QueteCibles.lua
