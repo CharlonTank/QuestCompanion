@@ -591,10 +591,23 @@ local function collecter()
                     if not o.fini then
                         descriptions[#descriptions + 1] = { texte = nom, fait = o.fait or fait, total = o.total or total, type = o.type }
                         if not restant and o.type == "item" then restant = descriptions[#descriptions] end
+                        -- Objet "X's Head", "X's Dorsal Fin", "Head of X" : le mob X est la cible (sans attendre l'apprentissage)
+                        if o.type == "item" then
+                            local proprio = nom:match("^(.-)'s [%a ]+$") or nom:match("^[Hh]ead of (.+)$") or nom:match("^[Tt][eê]te de (.+)$")
+                            if proprio and ressembleNomCreature(proprio) and not nomsKill[proprio] then
+                                ajouter({ nom = proprio, quete = q.titre, detail = "Lache : " .. nom, fait = o.fait or fait, total = o.total or total, genre = "mob" })
+                            end
+                        end
                     end
                 end
             end
             etatsObjectifs[q.id] = etats
+            -- Titre "WANTED: X" : X est le mob a tuer, quels que soient les objectifs
+            local recherche = q.titre and (q.titre:match("^WANTED: (.+)$") or q.titre:match("^RECHERCH[EÉ]E?%s*: (.+)$"))
+            if recherche and ressembleNomCreature(recherche) then
+                local d = descriptions[1]
+                ajouter({ nom = recherche, quete = q.titre, detail = d and ("Lache : " .. d.texte) or "Recherche", fait = d and d.fait, total = d and d.total, genre = "mob" })
+            end
 
             -- 4. Appris : mobs qui comptent pour la quete (objets a ramasser) et PNJ d'interaction
             local pnjConnu = false
