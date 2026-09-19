@@ -44,10 +44,17 @@ local function niveauQuete(qid)
     end
 end
 
+-- Seuil d'ecart de niveau au-dela duquel une quete est ignoree : 3 = orange et rouge ignorees (defaut),
+-- 5 = seules les rouges ignorees (/route orange), 99 = tout propose (/route difficiles)
+local function seuilNiveau()
+    if QueteRouteDB.difficiles then return 99 end
+    if QueteRouteDB.orange then return 5 end
+    return 3
+end
+
 local function tropDure(qid)
-    if QueteRouteDB.difficiles then return false end
     local lvl = niveauQuete(qid)
-    return lvl and (lvl - UnitLevel("player")) >= 3
+    return lvl and (lvl - UnitLevel("player")) >= seuilNiveau()
 end
 
 -- ================================================================ Enregistrement du parcours
@@ -961,7 +968,11 @@ SlashCmdList["QUETEROUTE"] = function(msg)
         afficher()
     elseif msg == "difficiles" then
         QueteRouteDB.difficiles = not QueteRouteDB.difficiles
-        print(PREFIX .. "Quetes orange/rouges : " .. (QueteRouteDB.difficiles and "proposees" or "ignorees"))
+        print(PREFIX .. "Quetes rouges : " .. (QueteRouteDB.difficiles and "proposees" or "ignorees"))
+        afficher()
+    elseif msg == "orange" then
+        QueteRouteDB.orange = not QueteRouteDB.orange
+        print(PREFIX .. "Quetes orange : " .. (QueteRouteDB.orange and "proposees" or "ignorees") .. "  (/route difficiles pour les rouges)")
         afficher()
     elseif msg:match("^rayon") then
         local n = tonumber(msg:match("%d+"))

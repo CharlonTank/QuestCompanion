@@ -546,7 +546,8 @@ local function collecter()
         local debutC, debutP = #cibles, #pnjs   -- pour rattacher les cibles de cette quete a son questID
         local appris = QueteCiblesDB.appris[q.id] or {}
         -- Quete orange ou rouge (3 niveaux au-dessus ou plus) : pas de cibles proposees (/cibles difficiles pour les voir)
-        local tropDure = not q.complete and not QueteCiblesDB.difficiles and q.niveau and (q.niveau - niveauJoueur) >= 3
+        local seuil = QueteCiblesDB.difficiles and 99 or (QueteCiblesDB.orange and 5 or 3)   -- 3 = jaune seulement, 5 = + orange, 99 = tout
+        local tropDure = not q.complete and q.niveau and (q.niveau - niveauJoueur) >= seuil
 
         if tropDure then
             -- rien
@@ -979,9 +980,13 @@ local function commande(msg)
         QueteCiblesDB.marque = (QueteCiblesDB.marque == false) and true or false
         print(PREFIX .. "Icones au-dessus des mobs : " .. (QueteCiblesDB.marque and "actives" or "coupees"))
         reconstruire()
+    elseif action == "orange" then
+        QueteCiblesDB.orange = not QueteCiblesDB.orange
+        print(PREFIX .. "Cibles des quetes orange : " .. (QueteCiblesDB.orange and "affichees" or "masquees") .. "  (/cibles difficiles pour les rouges)")
+        reconstruire()
     elseif action == "difficiles" then
         QueteCiblesDB.difficiles = not QueteCiblesDB.difficiles
-        print(PREFIX .. "Cibles des quetes orange/rouges : " .. (QueteCiblesDB.difficiles and "affichees" or "masquees"))
+        print(PREFIX .. "Cibles des quetes rouges : " .. (QueteCiblesDB.difficiles and "affichees" or "masquees"))
         reconstruire()
     elseif action == "finis" then
         QueteCiblesDB.montrerFinis = not QueteCiblesDB.montrerFinis
