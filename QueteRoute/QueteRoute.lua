@@ -733,7 +733,7 @@ ev:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 ev:RegisterEvent("ZONE_CHANGED")
 ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
-local attente = 0
+attente = 0
 ev:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" then
         if arg1 ~= addonName then return end
