@@ -36,8 +36,29 @@ local titre = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 titre:SetPoint("TOP", frame, "TOP", 0, -5)
 titre:SetText("Cibles")
 
+-- Bouton "le plus proche" : sa macro essaie chaque nom de la liste, du plus proche au plus loin, et s'arrete
+-- au premier qui existe. Liee a une touche via le menu Raccourcis (section QueteCibles) ou /click QueteCiblesToutBouton
+local toutBouton = CreateFrame("Button", "QueteCiblesToutBouton", frame, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+toutBouton:SetSize(LARGEUR - 12, 20)
+toutBouton:SetPoint("TOP", frame, "TOP", 0, -22)
+toutBouton:SetText("Cibler le plus proche")
+toutBouton:RegisterForClicks("AnyDown", "AnyUp")
+toutBouton:SetAttribute("type", "macro")
+toutBouton:SetAttribute("macrotext", "/cleartarget")
+toutBouton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:SetText("Cibler le plus proche")
+    GameTooltip:AddLine("Cible la cible de quete la plus proche parmi celles visibles autour de toi.", 1, 1, 1, true)
+    GameTooltip:AddLine("Raccourci : menu Raccourcis > AddOns > QueteCibles, ou une macro /click QueteCiblesToutBouton", 0.7, 0.7, 0.7, true)
+    GameTooltip:Show()
+end)
+toutBouton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+BINDING_HEADER_QUETECIBLES = "QueteCibles"
+_G["BINDING_NAME_CLICK QueteCiblesToutBouton:LeftButton"] = "Cibler la cible de quete la plus proche"
+local DECALAGE_LISTE = 24   -- hauteur du bouton au-dessus de la liste
+
 local vide = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-vide:SetPoint("TOP", titre, "BOTTOM", 0, -6)
+vide:SetPoint("TOP", toutBouton, "BOTTOM", 0, -6)
 vide:SetText("Aucune cible")
 
 -- ================================================================ Boutons (securises : clic = /targetexact)
@@ -45,7 +66,7 @@ local boutons = {}
 for i = 1, MAX_BTN do
     local b = CreateFrame("Button", "QueteCiblesBouton" .. i, frame, "SecureActionButtonTemplate")
     b:SetSize(LARGEUR - 12, HAUTEUR_BTN)
-    b:SetPoint("TOP", frame, "TOP", 0, -22 - (i - 1) * (HAUTEUR_BTN + 2))
+    b:SetPoint("TOP", frame, "TOP", 0, -22 - DECALAGE_LISTE - (i - 1) * (HAUTEUR_BTN + 2))
     b:RegisterForClicks("AnyDown", "AnyUp")
     b:SetAttribute("type", "macro")
 
@@ -677,7 +698,57 @@ local function majToutesIcones()
     end
 end
 
+-- Estimation de proximite d'une unite de barre de nom (plus petit = plus proche) :
+-- portee d'interaction quand elle est disponible, sinon taille apparente de la barre de nom
+local function proximite(unit, plate)
+    if CheckInteractDistance then
+        local ok3 = pcall(CheckInteractDistance, unit, 3)   -- ~10 yards
+        if ok3 and select(2, pcall(CheckInteractDistance, unit, 3)) then return 1 end
+        local ok1, r1 = pcall(CheckInteractDistance, unit, 1) -- ~28 yards
+        if ok1 and r1 then return 2 end
+    end
+    local taille = plate and plate:GetEffectiveScale() or 1
+    return 3 + (1 - math.min(taille, 1))   -- barre plus petite = plus loin
+end
+
+-- Reconstruit la macro du bouton "le plus proche" (hors combat uniquement : attribut securise)
+local function majBoutonTout()
+    if InCombatLockdown() then return end
+    local noms, index = {}, {}
+    for i = 1, MAX_BTN do
+        local b = boutons[i]
+        if b:IsShown() and b.cible and b.cible.genre ~= "inconnu" and not b.cible.fini then
+            noms[#noms + 1] = b.cible.nom; index[b.cible.nom] = i
+        end
+    end
+    if #noms == 0 then toutBouton:SetAttribute("macrotext", "/cleartarget"); return end
+    -- Score par nom : la meilleure proximite parmi les unites visibles portant ce nom ; invisibles apres
+    local score = {}
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        for _, np in ipairs(C_NamePlate.GetNamePlates()) do
+            local u = np.namePlateUnitToken
+            local n = u and UnitName(u)
+            if n and index[n] and not UnitIsDead(u) then
+                local p = proximite(u, np)
+                if not score[n] or p < score[n] then score[n] = p end
+            end
+        end
+    end
+    table.sort(noms, function(a, b)
+        local sa, sb = score[a] or 99, score[b] or 99
+        if sa ~= sb then return sa < sb end
+        return index[a] < index[b]
+    end)
+    local lignes = { "/cleartarget" }
+    for k, n in ipairs(noms) do
+        lignes[#lignes + 1] = (k == 1) and ("/targetexact " .. n) or ("/targetexact [@target,noexists] " .. n)
+        if #table.concat(lignes, "\n") > 900 then break end
+    end
+    toutBouton:SetAttribute("macrotext", table.concat(lignes, "\n"))
+end
+
 local function rafraichirCouleurs()
+    majBoutonTout()
     for i = 1, MAX_BTN do
         local b = boutons[i]
         if b:IsShown() and b.cible then
@@ -726,7 +797,7 @@ reconstruire = function()
         end
     end
     if n == 0 then vide:Show() else vide:Hide() end
-    frame:SetHeight(28 + math.max(n, 1) * (HAUTEUR_BTN + 2))
+    frame:SetHeight(28 + DECALAGE_LISTE + math.max(n, 1) * (HAUTEUR_BTN + 2))
     rafraichirCouleurs()
 end
 
