@@ -91,9 +91,13 @@ local function reponseTempsJoue(total, niveau)
     if cb then cb(total or 0, niveau or 0) end
 end
 
-local function duree(sec)
+local function duree(sec, avecSecondes)
     sec = math.floor(sec or 0)
-    local h, m = math.floor(sec / 3600), math.floor((sec % 3600) / 60)
+    local h, m, s = math.floor(sec / 3600), math.floor((sec % 3600) / 60), sec % 60
+    if avecSecondes then
+        if h > 0 then return ("%dh %02dm %02ds"):format(h, m, s) end
+        return ("%dm %02ds"):format(m, s)
+    end
     if h > 0 then return ("%dh %02dm"):format(h, m) end
     return ("%dm"):format(m)
 end
@@ -123,23 +127,21 @@ local function annoncerNiveau(nouveau)
 
         local route = ns.route and ns.route[UnitFactionGroup("player") or "Neutral"]
         local commu = route and route.niveaux and route.niveaux[precedent]
-        local gros = ("Niveau %d !"):format(nouveau)
-        if dureePrec then gros = gros .. ("  Niveau %d fait en %s"):format(precedent, duree(dureePrec)) end
+        -- Format RestedXP : "Niveau 14 -> 15 : 1h 12m 33s"
+        local gros = dureePrec and ("Niveau %d -> %d : %s"):format(precedent, nouveau, duree(dureePrec, true))
+            or ("Niveau %d !"):format(nouveau)
         if RaidNotice_AddMessage and RaidWarningFrame then
             RaidNotice_AddMessage(RaidWarningFrame, gros, ChatTypeInfo["RAID_WARNING"] or { r = 1, g = 0.8, b = 0 })
         else
             UIErrorsFrame:AddMessage(gros, 1, 0.8, 0)
         end
-        local detail = ("|cff00ff88[QueteRoute]|r Niveau %d atteint. Temps de jeu total : %s."):format(nouveau, duree(total))
-        if dureePrec then
-            detail = detail .. (" Niveau %d : %s"):format(precedent, duree(dureePrec))
-            if commu and commu.duree then
-                local ecart = dureePrec - commu.duree
-                detail = detail .. (" (communaute : %s, %s%s)"):format(duree(commu.duree),
-                    ecart <= 0 and "|cff00ff00" or "|cffff6060", (ecart <= 0 and "-" or "+") .. duree(math.abs(ecart)) .. "|r")
-            end
-            detail = detail .. "."
+        local detail = "|cff00ff88[QueteRoute]|r " .. gros
+        if dureePrec and commu and commu.duree then
+            local ecart = dureePrec - commu.duree
+            detail = detail .. (" (communaute : %s, %s%s|r)"):format(duree(commu.duree, true),
+                ecart <= 0 and "|cff00ff00-" or "|cffff6060+", duree(math.abs(ecart), true))
         end
+        detail = detail .. (". Temps de jeu total : %s."):format(duree(total, true))
         print(detail)
     end)
 end
@@ -803,7 +805,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         cle = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
         wipe(etatObjectifs)
         attente = 1
-        if arg1 then C_Timer.After(5, initNiveau) end   -- arg1 = premiere connexion (pas un /reload)
+        C_Timer.After(5, initNiveau)   -- a chaque chargement (connexion ou /reload) : ne note que si le niveau n'est pas deja connu
     elseif event == "TIME_PLAYED_MSG" then
         reponseTempsJoue(arg1, arg2)
     elseif event == "PLAYER_LEVEL_UP" then
