@@ -4,7 +4,7 @@
 ## Author: harto
 ## Version: 0.1
 ## SavedVariables: QueteRouteDB
-## OptionalDeps: QueteGPS, QueteCibles
+## OptionalDeps: QueteGPS, QueteCibles, RXPGuides
 
 Route.lua
 QueteRoute.lua

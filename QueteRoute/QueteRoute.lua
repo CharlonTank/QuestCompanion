@@ -603,6 +603,19 @@ function QueteRoute_PointsPrendre()
 end
 
 local function afficher()
+    -- Panneau masque (ex. quand RestedXP guide) : on continue d'enregistrer, mais on ne pilote pas la fleche du GPS
+    if not frame:IsShown() then
+        rafraichirServices()
+        if destinationManuelle then
+            local d = distanceDepuisJoueur(destinationManuelle)
+            if d and d < 15 then destinationManuelle = nil end
+        end
+        if QueteGPS then
+            if destinationManuelle and QueteGPS.Definir then QueteGPS.Definir(destinationManuelle.map, destinationManuelle.x, destinationManuelle.y, destinationManuelle.nom, ">")
+            elseif QueteGPS.Effacer then QueteGPS.Effacer() end
+        end
+        return
+    end
     calculerEtapes()
     rafraichirServices()
     -- Destination choisie a la main (service) : prioritaire jusqu'a l'arrivee (15 yards)
@@ -741,7 +754,12 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         QueteRouteDB.journal = QueteRouteDB.journal or {}
         QueteRouteDB.passes = QueteRouteDB.passes or {}
         QueteRouteDB.ordrePasses = QueteRouteDB.ordrePasses or {}
-        if QueteRouteDB.shown == nil then QueteRouteDB.shown = true end
+        if QueteRouteDB.shown == nil then
+            -- Avec RestedXP present, le panneau de route reste masque par defaut (/route pour l'afficher) ;
+            -- l'enregistrement du parcours pour la communaute continue dans tous les cas
+            local rxp = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides")) or (IsAddOnLoaded and IsAddOnLoaded("RXPGuides"))
+            QueteRouteDB.shown = not rxp
+        end
         if QueteRouteDB.pos then
             frame:ClearAllPoints()
             frame:SetPoint(QueteRouteDB.pos[1], UIParent, QueteRouteDB.pos[2], QueteRouteDB.pos[3], QueteRouteDB.pos[4])
