@@ -20,7 +20,8 @@
      "map": 2521,
      "x": 0.423,
      "y": 0.621,
-     "npc": "Peacekeeper Vaaniel"
+     "npc": "Peacekeeper Vaaniel",
+     "n": "0"
     },
     {
      "k": "A",
@@ -30,7 +31,7 @@
      "x": 0.423,
      "y": 0.621,
      "npc": "",
-     "n": "A Last Request;0"
+     "n": "A Last Request"
     },
     {
      "k": "T",
@@ -39,7 +40,8 @@
      "map": 2521,
      "x": 0.444,
      "y": 0.45,
-     "npc": "Teeri Wellwind"
+     "npc": "Teeri Wellwind",
+     "n": "0"
     },
     {
      "k": "T",
@@ -48,7 +50,8 @@
      "map": 2521,
      "x": 0.449,
      "y": 0.442,
-     "npc": "Taleen Shimmerthread"
+     "npc": "Taleen Shimmerthread",
+     "n": "0"
     },
     {
      "k": "T",
@@ -57,7 +60,8 @@
      "map": 2521,
      "x": 0.452,
      "y": 0.452,
-     "npc": "Danarii Bellowveil"
+     "npc": "Danarii Bellowveil",
+     "n": "0"
     },
     {
      "k": "T",
@@ -66,7 +70,8 @@
      "map": 2521,
      "x": 0.456,
      "y": 0.455,
-     "npc": "Constable Aonda"
+     "npc": "Constable Aonda",
+     "n": "0"
     },
     {
      "k": "T",
@@ -75,7 +80,8 @@
      "map": 2521,
      "x": 0.456,
      "y": 0.455,
-     "npc": "Constable Aonda"
+     "npc": "Constable Aonda",
+     "n": "0"
     },
     {
      "k": "A",
@@ -85,7 +91,7 @@
      "x": 0.457,
      "y": 0.455,
      "npc": "Constable Aonda",
-     "n": "To Valanaar;0"
+     "n": "To Valanaar"
     },
     {
      "k": "A",
@@ -95,7 +101,7 @@
      "x": 0.457,
      "y": 0.455,
      "npc": "",
-     "n": "Deliver the Signet;0"
+     "n": "Deliver the Signet"
     },
     {
      "k": "A",
@@ -105,7 +111,7 @@
      "x": 0.417,
      "y": 0.448,
      "npc": "",
-     "n": "Camping 101: Mining;0"
+     "n": "Camping 101: Mining"
     },
     {
      "k": "A",
@@ -115,7 +121,7 @@
      "x": 0.606,
      "y": 0.727,
      "npc": "",
-     "n": "Crab Season;0"
+     "n": "Crab Season"
     },
     {
      "k": "A",
@@ -125,7 +131,7 @@
      "x": 0.621,
      "y": 0.733,
      "npc": "",
-     "n": "Blood Tithe;0"
+     "n": "Blood Tithe"
     },
     {
      "k": "A",
@@ -135,7 +141,7 @@
      "x": 0.64,
      "y": 0.751,
      "npc": "",
-     "n": "Unnerving Silence;0"
+     "n": "Unnerving Silence"
     },
     {
      "k": "T",
@@ -144,7 +150,8 @@
      "map": 2521,
      "x": 0.662,
      "y": 0.765,
-     "npc": "Talaanis Shadowsong"
+     "npc": "Talaanis Shadowsong",
+     "n": "0"
     },
     {
      "k": "T",
@@ -153,7 +160,8 @@
      "map": 2521,
      "x": 0.662,
      "y": 0.766,
-     "npc": "Valennia Stormfist"
+     "npc": "Valennia Stormfist",
+     "n": "0"
     },
     {
      "k": "A",
@@ -163,7 +171,7 @@
      "x": 0.662,
      "y": 0.766,
      "npc": "Valennia Stormfist",
-     "n": "Bugged;0"
+     "n": "Bugged"
     },
     {
      "k": "A",
@@ -173,7 +181,7 @@
      "x": 0.662,
      "y": 0.766,
      "npc": "",
-     "n": "The Grand Skyseer;0"
+     "n": "The Grand Skyseer"
     },
     {
      "k": "A",
@@ -183,7 +191,7 @@
      "x": 0.659,
      "y": 0.744,
      "npc": "",
-     "n": "Aid For The Refugees;0"
+     "n": "Aid For The Refugees"
     },
     {
      "k": "A",
@@ -193,7 +201,7 @@
      "x": 0.659,
      "y": 0.744,
      "npc": "",
-     "n": "The Fate of a Loved One;0"
+     "n": "The Fate of a Loved One"
     },
     {
      "k": "T",
@@ -202,7 +210,8 @@
      "map": 2521,
      "x": 0.592,
      "y": 0.798,
-     "npc": "Ayessa Dawnsinger"
+     "npc": "Ayessa Dawnsinger",
+     "n": "0"
     },
     {
      "k": "A",
@@ -212,7 +221,7 @@
      "x": 0.592,
      "y": 0.798,
      "npc": "Ayessa Dawnsinger",
-     "n": "A Grand Adventure;0"
+     "n": "A Grand Adventure"
     },
     {
      "k": "A",
@@ -222,7 +231,7 @@
      "x": 0.592,
      "y": 0.798,
      "npc": "",
-     "n": "The Broken Construct;0"
+     "n": "The Broken Construct"
     },
     {
      "k": "A",
@@ -232,7 +241,7 @@
      "x": 0.582,
      "y": 0.784,
      "npc": "",
-     "n": "Unwelcome Spirits;0"
+     "n": "Unwelcome Spirits"
     },
     {
      "k": "T",
@@ -241,7 +250,8 @@
      "map": 2521,
      "x": 0.591,
      "y": 0.797,
-     "npc": "Ayessa Dawnsinger"
+     "npc": "Ayessa Dawnsinger",
+     "n": "0"
     },
     {
      "k": "T",
@@ -250,7 +260,8 @@
      "map": 2521,
      "x": 0.591,
      "y": 0.73,
-     "npc": "Riaani Nightwind"
+     "npc": "Riaani Nightwind",
+     "n": "0"
     },
     {
      "k": "A",
@@ -260,7 +271,7 @@
      "x": 0.591,
      "y": 0.73,
      "npc": "",
-     "n": "The Broken Construct;0"
+     "n": "The Broken Construct"
     },
     {
      "k": "T",
@@ -269,7 +280,8 @@
      "map": 2521,
      "x": 0.662,
      "y": 0.766,
-     "npc": "Valennia Stormfist"
+     "npc": "Valennia Stormfist",
+     "n": "0"
     },
     {
      "k": "T",
@@ -278,7 +290,8 @@
      "map": 2521,
      "x": 0.467,
      "y": 0.819,
-     "npc": "Aamelia Windfield"
+     "npc": "Aamelia Windfield",
+     "n": "0"
     },
     {
      "k": "A",
@@ -288,7 +301,7 @@
      "x": 0.467,
      "y": 0.819,
      "npc": "",
-     "n": "Make Yourself Useful;0"
+     "n": "Make Yourself Useful"
     },
     {
      "k": "A",
@@ -298,7 +311,7 @@
      "x": 0.487,
      "y": 0.781,
      "npc": "",
-     "n": "What Is My Purpose?;0"
+     "n": "What Is My Purpose?"
     },
     {
      "k": "T",
@@ -307,7 +320,8 @@
      "map": 2521,
      "x": 0.467,
      "y": 0.819,
-     "npc": "Aamelia Windfield"
+     "npc": "Aamelia Windfield",
+     "n": "0"
     },
     {
      "k": "A",
@@ -317,7 +331,7 @@
      "x": 0.467,
      "y": 0.818,
      "npc": "Aamelia Windfield",
-     "n": "Ornery Ornery Galestriders;0"
+     "n": "Ornery Ornery Galestriders"
     },
     {
      "k": "A",
@@ -327,7 +341,7 @@
      "x": 0.466,
      "y": 0.817,
      "npc": "",
-     "n": "Flutterfly Dust;0"
+     "n": "Flutterfly Dust"
     },
     {
      "k": "T",
@@ -336,7 +350,8 @@
      "map": 2521,
      "x": 0.468,
      "y": 0.817,
-     "npc": "Aamelia Windfield"
+     "npc": "Aamelia Windfield",
+     "n": "0"
     },
     {
      "k": "T",
@@ -345,7 +360,8 @@
      "map": 2521,
      "x": 0.475,
      "y": 0.785,
-     "npc": "Aamelia Windfield"
+     "npc": "Aamelia Windfield",
+     "n": "0"
     },
     {
      "k": "T",
@@ -354,7 +370,8 @@
      "map": 2521,
      "x": 0.467,
      "y": 0.819,
-     "npc": "Aamelia Windfield"
+     "npc": "Aamelia Windfield",
+     "n": "0"
     },
     {
      "k": "A",
@@ -364,7 +381,7 @@
      "x": 0.467,
      "y": 0.819,
      "npc": "",
-     "n": "The Hills Have Eyes;0"
+     "n": "The Hills Have Eyes"
     },
     {
      "k": "T",
@@ -373,7 +390,8 @@
      "map": 2521,
      "x": 0.617,
      "y": 0.392,
-     "npc": "Elegael Thornpaw"
+     "npc": "Elegael Thornpaw",
+     "n": "0"
     },
     {
      "k": "A",
@@ -383,7 +401,7 @@
      "x": 0.617,
      "y": 0.392,
      "npc": "",
-     "n": "Tears of the Lady;0"
+     "n": "Tears of the Lady"
     },
     {
      "k": "A",
@@ -393,7 +411,7 @@
      "x": 0.617,
      "y": 0.392,
      "npc": "",
-     "n": "Feathers for Binding;0"
+     "n": "Feathers for Binding"
     },
     {
      "k": "A",
@@ -403,7 +421,7 @@
      "x": 0.617,
      "y": 0.392,
      "npc": "",
-     "n": "Unwanted and Unworthy;0\n```"
+     "n": "Unwanted and Unworthy"
     }
    ]
   }
