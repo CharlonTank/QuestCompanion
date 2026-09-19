@@ -702,8 +702,8 @@ end
 -- portee d'interaction quand elle est disponible, sinon taille apparente de la barre de nom
 local function proximite(unit, plate)
     if CheckInteractDistance then
-        local ok3 = pcall(CheckInteractDistance, unit, 3)   -- ~10 yards
-        if ok3 and select(2, pcall(CheckInteractDistance, unit, 3)) then return 1 end
+        local ok3, r3 = pcall(CheckInteractDistance, unit, 3)   -- ~10 yards
+        if ok3 and r3 then return 1 end
         local ok1, r1 = pcall(CheckInteractDistance, unit, 1) -- ~28 yards
         if ok1 and r1 then return 2 end
     end
