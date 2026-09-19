@@ -4,6 +4,7 @@
 local _, ns = ...
 ns.seed = {
     [123] = { "Highlands Bandit" },
+    [844] = { "@Greater Plainstrider" },
     [92516] = { "?Teeri Wellwind", "Hippogryph Matriarch", "Hippogryph Protector", "Hippogryph Youth" },
     [92550] = { "?Constable Aonda", "Al'Aketh Stormcaller", "Commander Cyclas", "Living Lightning" },
     [92551] = { "?Danarii Bellowveil", "Al'Aketh Stormcaller" },
