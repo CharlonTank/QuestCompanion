@@ -7,6 +7,6 @@ ns.route = {
         quetes = {
         },
         niveaux = {  },
-        services = { { t = "A", map = 1424, x = 0.627, y = 0.191, nom = "Innkeeper Shay", n = 1 } },
+        services = { { t = "R", map = 1424, x = 0.607, y = 0.203, nom = "Zixil", n = 1 } },
     },
 }
