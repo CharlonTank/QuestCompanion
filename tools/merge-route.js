@@ -27,6 +27,7 @@ for (const bloc of texte.split(/R1;/).slice(1)) {
         else if (f[0] === "T" && f.length >= 7) events.push({ k: "T", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6], n: titre(f.slice(7).join(";")) });
         else if (f[0] === "O" && f.length >= 8) events.push({ k: "O", q: +f[1], i: +f[2], f: +f[3], lvl: +f[4], map: +f[5], x: +f[6], y: +f[7] });
         else if (f[0] === "L" && f.length >= 4) events.push({ k: "L", lvl: +f[1], total: +f[2], d: +f[3] });
+        else if (f[0] === "S" && f.length >= 6) events.push({ k: "S", s: f[1], map: +f[2], x: +f[3], y: +f[4], nom: titre(f.slice(5).join(";")) });
     }
     if (events.length === 0) continue;
     const cle = contrib + "/" + perso.replace(/[^\w.-]/g, "_");
@@ -63,10 +64,15 @@ const spots = (evs) => {
 
 const factions = {};
 const niveaux = {};   // faction -> niveau precedent -> [durees]
+const services = {};  // faction -> "type|map|nom" -> [events]
 for (const { faction, events } of Object.values(data.contributeurs)) {
     const F = (factions[faction] = factions[faction] || {});
     const N = (niveaux[faction] = niveaux[faction] || {});
-    for (const e of events) if (e.k === "L" && e.d > 0 && e.lvl > 1) (N[e.lvl - 1] = N[e.lvl - 1] || []).push(e.d);
+    const S = (services[faction] = services[faction] || {});
+    for (const e of events) {
+        if (e.k === "L" && e.d > 0 && e.lvl > 1) (N[e.lvl - 1] = N[e.lvl - 1] || []).push(e.d);
+        else if (e.k === "S" && e.nom && e.map > 0) (S[`${e.s}|${e.map}|${e.nom}`] = S[`${e.s}|${e.map}|${e.nom}`] || []).push(e);
+    }
     const accepts = events.filter((e) => e.k === "A");
     accepts.forEach((e, idx) => {
         const Q = (F[e.q] = F[e.q] || { A: [], T: [], O: {}, rangs: [], titres: [] });
@@ -126,6 +132,13 @@ for (const faction of Object.keys(factions).sort()) {
     const N = niveaux[faction] || {};
     const nivLignes = Object.keys(N).sort((a, b) => a - b).map((l) => `[${l}] = { duree = ${Math.round(mediane(N[l]))}, n = ${N[l].length} }`);
     lignes.push(`        niveaux = { ${nivLignes.join(", ")} },`);
+    // Services (reparation R, auberge A, vol V) : position mediane par PNJ
+    const S = services[faction] || {};
+    const svcLignes = Object.values(S).map((evs) => {
+        const e = evs[0];
+        return `{ t = ${esc(e.s)}, map = ${e.map}, x = ${+mediane(evs.map((v) => v.x)).toFixed(3)}, y = ${+mediane(evs.map((v) => v.y)).toFixed(3)}, nom = ${esc(e.nom)}, n = ${evs.length} }`;
+    });
+    lignes.push(`        services = { ${svcLignes.join(", ")} },`);
     lignes.push("    },");
 }
 lignes.push("}", "");

@@ -243,6 +243,144 @@ local function pointClient(qid)
     end
 end
 
+-- ================================================================ Services : reparation (R), auberge (A), vol (V)
+-- Appris en jeu (marchand qui repare, aubergiste, maitre de vol), partages via la route communautaire.
+-- Les points de vol de la carte viennent en plus de l'API du client quand elle existe.
+local TYPES_SERVICE = { R = "Reparer", A = "Auberge", V = "Vol" }
+local destinationManuelle = nil    -- { map, x, y, nom } : choisie en cliquant un service, prioritaire sur la route
+local attente = 0                  -- delai avant recalcul de l'affichage (utilise par les evenements et les clics)
+
+local function servicesLocaux()
+    QueteRouteDB.services = QueteRouteDB.services or {}
+    return QueteRouteDB.services
+end
+
+local function enregistrerService(t, nom)
+    if not nom or nom == "" then return end
+    local map, x, y = position()
+    if not map or not x then return end
+    local liste = servicesLocaux()
+    for _, s in ipairs(liste) do
+        if s.t == t and s.nom == nom and s.map == map then s.x, s.y = x, y; return end
+    end
+    liste[#liste + 1] = { t = t, map = map, x = x, y = y, nom = nom }
+    enregistrer({ k = "S", s = t, nom = nom })
+    print(("|cff00ff88[QueteRoute]|r %s note : %s (partage a la communaute)"):format(TYPES_SERVICE[t] or t, nom))
+end
+
+-- Aubergiste : une option de dialogue "Make this inn your home" / "Faire de cette auberge votre foyer"
+local function detecterAubergiste()
+    local options = {}
+    if C_GossipInfo and C_GossipInfo.GetOptions then
+        for _, o in ipairs(C_GossipInfo.GetOptions() or {}) do options[#options + 1] = (o.name or ""):lower() end
+    elseif GetGossipOptions then
+        local t = { GetGossipOptions() }
+        for i = 1, #t, 2 do options[#options + 1] = tostring(t[i]):lower(); if t[i + 1] == "binder" then return true end end
+    end
+    for _, o in ipairs(options) do
+        if (o:find("inn") and o:find("home")) or o:find("auberge") or o:find("foyer") then return true end
+    end
+    return false
+end
+
+local function tousLesServices()
+    local res = {}
+    local route = ns.route and ns.route[UnitFactionGroup("player") or "Neutral"]
+    for _, s in ipairs((route and route.services) or {}) do res[#res + 1] = s end
+    for _, s in ipairs(servicesLocaux()) do res[#res + 1] = s end
+    -- Points de vol connus du client sur la carte courante
+    local map = C_Map.GetBestMapForUnit("player")
+    if map and C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap then
+        local ok, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, map)
+        if ok and nodes then
+            for _, n in ipairs(nodes) do
+                if n.position then
+                    res[#res + 1] = { t = "V", map = map, x = n.position.x, y = n.position.y, nom = n.name or "Point de vol", client = true }
+                end
+            end
+        end
+    end
+    return res
+end
+
+local function plusProcheParType()
+    local best = {}
+    for _, s in ipairs(tousLesServices()) do
+        local d = distanceDepuisJoueur(s)
+        if d and (not best[s.t] or d < best[s.t].d) then best[s.t] = { s = s, d = d } end
+    end
+    return best
+end
+
+local function durabiliteMin()
+    local mini
+    for slot = 1, 18 do
+        local cur, max = GetInventoryItemDurability(slot)
+        if cur and max and max > 0 then
+            local p = cur / max
+            if not mini or p < mini then mini = p end
+        end
+    end
+    return mini
+end
+
+-- ---- Cadre "Services"
+local svc = CreateFrame("Frame", "QueteRouteServices", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+svc:SetSize(230, 74)
+svc:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -20, -260)
+svc:SetMovable(true); svc:EnableMouse(true); svc:RegisterForDrag("LeftButton")
+svc:SetScript("OnDragStart", svc.StartMoving)
+svc:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local p, _, rp, x, y = self:GetPoint()
+    QueteRouteDB.posServices = { p, rp, x, y }
+end)
+svc:SetClampedToScreen(true)
+if svc.SetBackdrop then
+    svc:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", tile = true, tileSize = 16, insets = { left = 2, right = 2, top = 2, bottom = 2 } })
+    svc:SetBackdropColor(0, 0, 0, 0.5)
+end
+local svcTitre = svc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+svcTitre:SetPoint("TOPLEFT", 8, -5)
+svcTitre:SetText("Services")
+local svcLignes = {}
+for i, t in ipairs({ "R", "A", "V" }) do
+    local b = CreateFrame("Button", nil, svc)
+    b:SetSize(214, 16)
+    b:SetPoint("TOPLEFT", 8, -22 - (i - 1) * 17)
+    b.txt = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.txt:SetPoint("LEFT"); b.txt:SetPoint("RIGHT"); b.txt:SetJustifyH("LEFT"); b.txt:SetWordWrap(false)
+    b.hl = b:CreateTexture(nil, "HIGHLIGHT"); b.hl:SetAllPoints(); b.hl:SetColorTexture(1, 1, 1, 0.1)
+    b.type = t
+    b:SetScript("OnClick", function(self)
+        if self.cible then
+            if destinationManuelle and destinationManuelle.nom == self.cible.nom then destinationManuelle = nil
+            else destinationManuelle = { map = self.cible.map, x = self.cible.x, y = self.cible.y, nom = (TYPES_SERVICE[self.type] or "") .. " : " .. self.cible.nom } end
+            attente = 0.1
+        end
+    end)
+    svcLignes[t] = b
+end
+
+local function rafraichirServices()
+    if not svc:IsShown() then return end
+    local best = plusProcheParType()
+    local dur = durabiliteMin()
+    for t, b in pairs(svcLignes) do
+        local e = best[t]
+        local libelle = TYPES_SERVICE[t]
+        if t == "R" and dur and dur < 0.25 then libelle = ("|cffff4040%s (equipement a %d%%)|r"):format(libelle, math.floor(dur * 100)) end
+        if e then
+            b.cible = e.s
+            local actif = destinationManuelle and destinationManuelle.nom == ((TYPES_SERVICE[t] or "") .. " : " .. e.s.nom)
+            b.txt:SetText(("%s%s : %s |cffa0a0a0(%d yards)|r"):format(actif and "|cff00ff88>|r " or "", libelle, e.s.nom, e.d))
+        else
+            b.cible = nil
+            b.txt:SetText(("%s : |cff808080inconnu, a decouvrir|r"):format(libelle))
+        end
+    end
+end
+
 -- ---- Ce que QueteCibles a appris pour une quete (mobs qui lachent l'objet, PNJ a qui rendre)
 local function apprisPour(qid)
     local mobs, pnjs, receveur, donneur = {}, {}, nil, nil
@@ -466,6 +604,19 @@ end
 
 local function afficher()
     calculerEtapes()
+    rafraichirServices()
+    -- Destination choisie a la main (service) : prioritaire jusqu'a l'arrivee (15 yards)
+    if destinationManuelle then
+        local d = distanceDepuisJoueur(destinationManuelle)
+        if d and d < 15 then destinationManuelle = nil
+        elseif QueteGPS and QueteGPS.Definir then
+            QueteGPS.Definir(destinationManuelle.map, destinationManuelle.x, destinationManuelle.y, destinationManuelle.nom, ">")
+            etapeTxt:SetText("|cff00ff88Direction :|r " .. destinationManuelle.nom .. (d and (" (" .. math.floor(d) .. " yards)") or ""))
+            suiteTxt:SetText("Clique a nouveau le service pour annuler")
+            frame:SetHeight(70)
+            return
+        end
+    end
     local e = etapes[1]
     if not e then
         etapeTxt:SetText("Rien a faire : prends des quetes ! Ton parcours est enregistre (/route export pour le partager).")
@@ -521,6 +672,8 @@ local function exporter()
             lignes[#lignes + 1] = table.concat({ "O", ev.q, ev.i or 0, ev.f or 0, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0 }, ";")
         elseif ev.k == "L" then
             lignes[#lignes + 1] = table.concat({ "L", ev.lvl or 0, ev.total or 0, ev.d or 0 }, ";")
+        elseif ev.k == "S" then
+            lignes[#lignes + 1] = table.concat({ "S", ev.s or "?", ev.map or 0, ev.x or 0, ev.y or 0, propre(ev.nom) }, ";")
         end
     end
     return table.concat(lignes, "|")
@@ -569,6 +722,10 @@ ev:RegisterEvent("QUEST_TURNED_IN")
 ev:RegisterEvent("QUEST_LOG_UPDATE")
 ev:RegisterEvent("PLAYER_LEVEL_UP")
 ev:RegisterEvent("TIME_PLAYED_MSG")
+ev:RegisterEvent("MERCHANT_SHOW")
+ev:RegisterEvent("TAXIMAP_OPENED")
+ev:RegisterEvent("GOSSIP_SHOW")
+ev:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
 pcall(ev.RegisterEvent, ev, "QUEST_REMOVED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 ev:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -590,6 +747,11 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
             frame:SetPoint(QueteRouteDB.pos[1], UIParent, QueteRouteDB.pos[2], QueteRouteDB.pos[3], QueteRouteDB.pos[4])
         end
         if QueteRouteDB.shown then frame:Show() else frame:Hide() end
+        if QueteRouteDB.posServices then
+            svc:ClearAllPoints()
+            svc:SetPoint(QueteRouteDB.posServices[1], UIParent, QueteRouteDB.posServices[2], QueteRouteDB.posServices[3], QueteRouteDB.posServices[4])
+        end
+        if QueteRouteDB.servicesShown == false then svc:Hide() else svc:Show() end
     elseif event == "PLAYER_LOGOUT" then
         -- Export pret a l'emploi dans la sauvegarde : le compagnon (companion/QuestCompanion-Sync.ps1) le lit et l'envoie
         if cle then
@@ -611,6 +773,14 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         if qid and qid > 0 and UnitExists("npc") and not UnitIsPlayer("npc") then
             pnjDialogue[qid] = UnitName("npc")
         end
+    elseif event == "MERCHANT_SHOW" then
+        if CanMerchantRepair and CanMerchantRepair() and UnitExists("npc") then enregistrerService("R", UnitName("npc")) end
+    elseif event == "TAXIMAP_OPENED" then
+        if UnitExists("npc") then enregistrerService("V", UnitName("npc")) end
+    elseif event == "GOSSIP_SHOW" then
+        if UnitExists("npc") and detecterAubergiste() then enregistrerService("A", UnitName("npc")) end
+    elseif event == "UPDATE_INVENTORY_DURABILITY" then
+        attente = 1
     elseif event == "QUEST_ACCEPTED" then
         local qid = (type(arg2) == "number" and arg2 > 0) and arg2 or arg1
         if qid and cle then
@@ -658,6 +828,14 @@ SlashCmdList["QUETEROUTE"] = function(msg)
         wipe(QueteRouteDB.passes); wipe(QueteRouteDB.ordrePasses)
         QueteRouteDB.pos = nil
         frame:ClearAllPoints(); frame:SetPoint("TOP", UIParent, "TOP", 0, -120)
+        afficher()
+    elseif msg == "services" then
+        QueteRouteDB.servicesShown = not (QueteRouteDB.servicesShown ~= false)
+        if QueteRouteDB.servicesShown then svc:Show() else svc:Hide() end
+        print(PREFIX .. "Cadre Services : " .. (QueteRouteDB.servicesShown and "affiche" or "masque"))
+        afficher()
+    elseif msg == "stop" then
+        destinationManuelle = nil
         afficher()
     elseif msg:match("^rayon") then
         local n = tonumber(msg:match("%d+"))
