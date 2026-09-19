@@ -1,2 +1,6 @@
 merge-summary.txt
 *.bak
+companion/token.txt
+companion/*.vbs
+companion/*.log
+companion/*.txt

@@ -15,14 +15,16 @@ const data = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, "utf
 // ---- Extraction des parcours dans le texte (un parcours commence par "R1;")
 let importes = 0, evenements = 0;
 for (const bloc of texte.split(/R1;/).slice(1)) {
-    const parts = bloc.split("|").map((s) => s.trim()).filter(Boolean);
+    // Chaque enregistrement tient sur une ligne : ce qui suit un retour a la ligne (fin du bloc de code de l'issue) est ignore
+    const parts = bloc.split("|").map((s) => s.split("\n")[0].trim()).filter(Boolean);
     const [perso, faction] = parts[0].split(";");
     if (!perso) continue;
+    const titre = (t) => (t || "").replace(/;\d+$/, "").replace(/`+$/, "").trim();
     const events = [];
     for (const p of parts.slice(1)) {
         const f = p.split(";");
-        if (f[0] === "A" && f.length >= 8) events.push({ k: "A", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6], n: f.slice(7).join(";") });
-        else if (f[0] === "T" && f.length >= 7) events.push({ k: "T", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6] });
+        if (f[0] === "A" && f.length >= 8) events.push({ k: "A", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6], n: titre(f.slice(7).join(";")) });
+        else if (f[0] === "T" && f.length >= 7) events.push({ k: "T", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6], n: titre(f.slice(7).join(";")) });
         else if (f[0] === "O" && f.length >= 8) events.push({ k: "O", q: +f[1], i: +f[2], f: +f[3], lvl: +f[4], map: +f[5], x: +f[6], y: +f[7] });
     }
     if (events.length === 0) continue;
@@ -67,7 +69,7 @@ for (const { faction, events } of Object.values(data.contributeurs)) {
         Q.A.push(e); Q.rangs.push(accepts.length > 1 ? idx / (accepts.length - 1) : 0); if (e.n) Q.titres.push(e.n);
     });
     for (const e of events) {
-        if (e.k === "T") { const Q = (F[e.q] = F[e.q] || { A: [], T: [], O: {}, rangs: [], titres: [] }); Q.T.push(e); }
+        if (e.k === "T") { const Q = (F[e.q] = F[e.q] || { A: [], T: [], O: {}, rangs: [], titres: [] }); Q.T.push(e); if (e.n) Q.titres.push(e.n); }
         else if (e.k === "O") { const Q = (F[e.q] = F[e.q] || { A: [], T: [], O: {}, rangs: [], titres: [] }); (Q.O[e.i] = Q.O[e.i] || []).push(e); }
     }
 }
@@ -101,7 +103,9 @@ for (const faction of Object.keys(factions).sort()) {
             const p = { map: liste[0].map, x: liste[0].x, y: liste[0].y, points: liste.slice(0, 12) };
             return [i, p];
         }).filter(([, p]) => p);
-        quetes.push({ qid: +qid, titre: plusFrequent(Q.titres), niveau, rang, contributeurs: new Set(Q.A.map((e) => e.lvl + ":" + e.map)).size || Q.T.length,
+        // Titres deja stockes avec un ";0" parasite (anciens exports) : nettoyes ici aussi
+        const titres = Q.titres.map((t) => t.replace(/;\d+$/, "").replace(/\n[\s\S]*$/, "").replace(/`+$/, "").trim()).filter(Boolean);
+        quetes.push({ qid: +qid, titre: plusFrequent(titres), niveau, rang, contributeurs: new Set(Q.A.map((e) => e.lvl + ":" + e.map)).size || Q.T.length,
             prendre: pointMedian(Q.A), rendre: pointMedian(Q.T), objectifs });
     }
     quetes.sort((a, b) => (a.niveau - b.niveau) || (a.rang - b.rang) || (a.qid - b.qid));

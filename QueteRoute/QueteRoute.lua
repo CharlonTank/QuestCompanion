@@ -432,14 +432,17 @@ end)
 -- ================================================================ Export du parcours
 -- Une ligne par evenement, separees par "|" :
 --   A;qid;lvl;map;x;y;npc;titre     T;qid;lvl;map;x;y;npc     O;qid;i;f;lvl;map;x;y
-local function propre(s) return (tostring(s or "")):gsub("[|;\n]", ",") end
+local function propre(s)
+    local r = tostring(s or ""):gsub("[|;\n]", ",")   -- gsub renvoie 2 valeurs : on n'en garde qu'une
+    return r
+end
 local function exporter()
     local lignes = { "R1;" .. propre(cle) .. ";" .. (UnitFactionGroup("player") or "") }
     for _, ev in ipairs(journal()) do
         if ev.k == "A" then
             lignes[#lignes + 1] = table.concat({ "A", ev.q, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0, propre(ev.npc), propre(ev.n) }, ";")
         elseif ev.k == "T" then
-            lignes[#lignes + 1] = table.concat({ "T", ev.q, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0, propre(ev.npc) }, ";")
+            lignes[#lignes + 1] = table.concat({ "T", ev.q, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0, propre(ev.npc), propre(ev.n) }, ";")
         elseif ev.k == "O" then
             lignes[#lignes + 1] = table.concat({ "O", ev.q, ev.i or 0, ev.f or 0, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0 }, ";")
         end
@@ -534,7 +537,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
     elseif event == "QUEST_TURNED_IN" then
         if arg1 and cle then
-            enregistrer({ k = "T", q = arg1, npc = pnjDialogue[arg1] })
+            enregistrer({ k = "T", q = arg1, npc = pnjDialogue[arg1], n = titreQuete(arg1) })
             etatObjectifs[arg1] = nil
             attente = 0.5
         end
