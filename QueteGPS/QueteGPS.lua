@@ -64,12 +64,12 @@ local function mondeDepuisCarte(mapID, x, y)
     if ok and pos then return pos.x, pos.y end
 end
 
-local function ajouter(mapID, x, y, typ, nom, src)
+local function ajouter(mapID, x, y, typ, nom, src, qid)
     if not x or not y or x <= 0 or y <= 0 then return end
     local wx, wy = mondeDepuisCarte(mapID, x, y)
     if not wx then return end
     sourcesOK[src] = (sourcesOK[src] or 0) + 1
-    candidats[#candidats + 1] = { wx = wx, wy = wy, mx = x, my = y, type = typ, nom = nom or "?" }
+    candidats[#candidats + 1] = { wx = wx, wy = wy, mx = x, my = y, type = typ, nom = nom or "?", qid = qid }
 end
 
 local function mesurerCarte(mapID)
@@ -155,10 +155,10 @@ local function collecter()
                 local trouve = false
                 if C_QuestLog.GetNextWaypointForMap then
                     local ok, wx, wy = pcall(C_QuestLog.GetNextWaypointForMap, qid, mapID)
-                    if ok and wx and wy then trouve = true; ajouter(mapID, wx, wy, typ, info.title, "waypoint") end
+                    if ok and wx and wy then trouve = true; ajouter(mapID, wx, wy, typ, info.title, "waypoint", qid) end
                 end
                 if not trouve and surCarte[qid] then
-                    ajouter(mapID, surCarte[qid].x, surCarte[qid].y, typ, info.title, "questsOnMap")
+                    ajouter(mapID, surCarte[qid].x, surCarte[qid].y, typ, info.title, "questsOnMap", qid)
                 end
             end
         end
@@ -167,7 +167,7 @@ local function collecter()
         for i = 1, GetNumQuestLogEntries() do
             local t, _, _, isHeader, _, isComplete, _, qid = GetQuestLogTitle(i)
             if not isHeader and qid and surCarte[qid] then
-                ajouter(mapID, surCarte[qid].x, surCarte[qid].y, isComplete == 1 and "?" or "o", t, "questsOnMap")
+                ajouter(mapID, surCarte[qid].x, surCarte[qid].y, isComplete == 1 and "?" or "o", t, "questsOnMap", qid)
             end
         end
     end
@@ -235,12 +235,18 @@ local function rafraichir()
         best = prioritaire
         bestD = math.sqrt((best.wx - px) ^ 2 + (best.wy - py) ^ 2)
     else
-        -- Le plus proche
+        -- Priorite : la quete en cours de farm (progres dans les 10 dernieres minutes) d'abord ; puis la plus proche,
+        -- un rendu ou une prise comptant double face a un objectif : on finit ce qu'on fait avant d'aller rendre,
+        -- sauf si le PNJ est vraiment tout pres
+        local enCours = QueteRoute_QueteEnCours and QueteRoute_QueteEnCours()
+        local bestScore
         for _, c in ipairs(candidats) do
             if not QueteGPSDB.filtre or QueteGPSDB.filtre == c.type then
                 local dx, dy = c.wx - px, c.wy - py
                 local d = math.sqrt(dx * dx + dy * dy)
-                if not bestD or d < bestD then best, bestD = c, d end
+                local score = d * (c.type == "o" and 1 or 2)
+                if enCours and c.qid == enCours and c.type == "o" then score = -1 end
+                if not bestScore or score < bestScore then best, bestD, bestScore = c, d, score end
             end
         end
     end

@@ -55,6 +55,16 @@ end
 local cle                    -- "Perso-Royaume"
 local pnjDialogue = {}       -- questID -> nom du PNJ vu dans le dialogue de quete
 local etatObjectifs = {}     -- questID -> { [i] = { fini=, fait= } }
+local dernierProgres = {}    -- questID -> GetTime() du dernier progres d'objectif
+
+-- Quete "en cours de farm" : progres dans les 10 dernieres minutes et pas encore terminee. Prioritaire partout.
+function QueteRoute_QueteEnCours()
+    local best, quand
+    for qid, t in pairs(dernierProgres) do
+        if GetTime() - t < 600 and questIndex(qid) and not queteComplete(qid) and (not quand or t > quand) then best, quand = qid, t end
+    end
+    return best
+end
 
 local function journal()
     QueteRouteDB.journal[cle] = QueteRouteDB.journal[cle] or {}
@@ -168,6 +178,7 @@ local function surveillerObjectifs()
                     -- On note la position a chaque progres (objet ramasse, mob tue, PNJ trouve) et a la fin,
                     -- en evitant les doublons trop proches : c'est ce qui permet de tracer un parcours
                     if (o.finished and not e.fini) or fait > e.fait then
+                        dernierProgres[qid] = GetTime()
                         local map, x, y = position()
                         local dx, dy = (x or 0) - (e.x or -1), (y or 0) - (e.y or -1)
                         local loin = (map ~= e.map) or (dx * dx + dy * dy) > 0.003 * 0.003
@@ -561,10 +572,16 @@ local function calculerEtapes()
             end
         end
     end
+    -- Priorite : la quete en cours de farm d'abord ; puis par distance, un rendu comptant double
+    -- (on finit ce qu'on fait avant d'aller rendre, sauf si le PNJ est vraiment tout pres)
+    local enCours = QueteRoute_QueteEnCours()
+    for _, e in ipairs(locales) do
+        if e.qid == enCours then e.score = -1
+        elseif e.dist then e.score = e.dist * (e.type == "rendre" and 2 or 1)
+        else e.score = 1e9 end
+    end
     table.sort(locales, function(a, b)
-        if a.dist and b.dist then return a.dist < b.dist end
-        if a.dist ~= nil then return true end
-        if b.dist ~= nil then return false end
+        if a.score ~= b.score then return a.score < b.score end
         return a.qid < b.qid
     end)
     for _, e in ipairs(locales) do etapes[#etapes + 1] = e end
