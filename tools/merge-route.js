@@ -26,6 +26,7 @@ for (const bloc of texte.split(/R1;/).slice(1)) {
         if (f[0] === "A" && f.length >= 8) events.push({ k: "A", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6], n: titre(f.slice(7).join(";")) });
         else if (f[0] === "T" && f.length >= 7) events.push({ k: "T", q: +f[1], lvl: +f[2], map: +f[3], x: +f[4], y: +f[5], npc: f[6], n: titre(f.slice(7).join(";")) });
         else if (f[0] === "O" && f.length >= 8) events.push({ k: "O", q: +f[1], i: +f[2], f: +f[3], lvl: +f[4], map: +f[5], x: +f[6], y: +f[7] });
+        else if (f[0] === "L" && f.length >= 4) events.push({ k: "L", lvl: +f[1], total: +f[2], d: +f[3] });
     }
     if (events.length === 0) continue;
     const cle = contrib + "/" + perso.replace(/[^\w.-]/g, "_");
@@ -61,8 +62,11 @@ const spots = (evs) => {
 };
 
 const factions = {};
+const niveaux = {};   // faction -> niveau precedent -> [durees]
 for (const { faction, events } of Object.values(data.contributeurs)) {
     const F = (factions[faction] = factions[faction] || {});
+    const N = (niveaux[faction] = niveaux[faction] || {});
+    for (const e of events) if (e.k === "L" && e.d > 0 && e.lvl > 1) (N[e.lvl - 1] = N[e.lvl - 1] || []).push(e.d);
     const accepts = events.filter((e) => e.k === "A");
     accepts.forEach((e, idx) => {
         const Q = (F[e.q] = F[e.q] || { A: [], T: [], O: {}, rangs: [], titres: [] });
@@ -85,7 +89,7 @@ const luaPoint = (p) => {
 };
 const lignes = [
     "-- Route communautaire, generee par tools/merge-route.js a partir des issues [route] sur GitHub. Ne pas editer a la main.",
-    "-- ns.route[faction] = { ordre = { questID... }, quetes = { [questID] = { titre, niveau, contributeurs, prendre, rendre, objectifs } } }",
+    "-- ns.route[faction] = { ordre = { questID... }, quetes = { [questID] = { titre, niveau, contributeurs, prendre, rendre, objectifs } }, niveaux = { [niveau] = { duree, n } } }",
     "local _, ns = ...",
     "ns.route = {",
 ];
@@ -117,7 +121,12 @@ for (const faction of Object.keys(factions).sort()) {
         const objs = q.objectifs.map(([i, p]) => `[${i}] = ${luaPoint(p)}`).join(", ");
         lignes.push(`            [${q.qid}] = { titre = ${esc(q.titre || "Quete " + q.qid)}, niveau = ${q.niveau}, contributeurs = ${q.contributeurs}, prendre = ${luaPoint(q.prendre)}, rendre = ${luaPoint(q.rendre)}, objectifs = { ${objs} } },`);
     }
-    lignes.push("        },", "    },");
+    lignes.push("        },");
+    // Temps median passe sur chaque niveau (pour le message de passage de niveau)
+    const N = niveaux[faction] || {};
+    const nivLignes = Object.keys(N).sort((a, b) => a - b).map((l) => `[${l}] = { duree = ${Math.round(mediane(N[l]))}, n = ${N[l].length} }`);
+    lignes.push(`        niveaux = { ${nivLignes.join(", ")} },`);
+    lignes.push("    },");
 }
 lignes.push("}", "");
 fs.writeFileSync(luaPath, lignes.join("\n"), "utf8");

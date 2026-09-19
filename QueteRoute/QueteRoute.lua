@@ -51,6 +51,80 @@ local function enregistrer(ev)
     j[#j + 1] = ev
 end
 
+-- ================================================================ Passage de niveau (message facon RestedXP)
+-- Temps de jeu via RequestTimePlayed, sans afficher la ligne "Temps joue" de Blizzard dans le chat
+local framesChatCoupes = {}
+local attenteTemps = nil        -- fonction a appeler a la reponse
+
+local function demanderTempsJoue(cb)
+    attenteTemps = cb
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
+        local f = _G["ChatFrame" .. i]
+        if f and f:IsEventRegistered("TIME_PLAYED_MSG") then f:UnregisterEvent("TIME_PLAYED_MSG"); framesChatCoupes[#framesChatCoupes + 1] = f end
+    end
+    RequestTimePlayed()
+end
+
+local function reponseTempsJoue(total, niveau)
+    for _, f in ipairs(framesChatCoupes) do f:RegisterEvent("TIME_PLAYED_MSG") end
+    wipe(framesChatCoupes)
+    local cb = attenteTemps; attenteTemps = nil
+    if cb then cb(total or 0, niveau or 0) end
+end
+
+local function duree(sec)
+    sec = math.floor(sec or 0)
+    local h, m = math.floor(sec / 3600), math.floor((sec % 3600) / 60)
+    if h > 0 then return ("%dh %02dm"):format(h, m) end
+    return ("%dm"):format(m)
+end
+
+local function debutsNiveaux()
+    QueteRouteDB.niveaux = QueteRouteDB.niveaux or {}
+    QueteRouteDB.niveaux[cle] = QueteRouteDB.niveaux[cle] or {}
+    return QueteRouteDB.niveaux[cle]
+end
+
+-- A la connexion : on note quand le niveau actuel a commence (temps total - temps sur ce niveau)
+local function initNiveau()
+    demanderTempsJoue(function(total, surNiveau)
+        local d = debutsNiveaux()
+        local lvl = UnitLevel("player")
+        if not d[lvl] then d[lvl] = total - surNiveau end
+    end)
+end
+
+local function annoncerNiveau(nouveau)
+    demanderTempsJoue(function(total)
+        local d = debutsNiveaux()
+        local precedent = nouveau - 1
+        local dureePrec = d[precedent] and (total - d[precedent]) or nil
+        d[nouveau] = total
+        enregistrer({ k = "L", lvl = nouveau, total = total, d = dureePrec })
+
+        local route = ns.route and ns.route[UnitFactionGroup("player") or "Neutral"]
+        local commu = route and route.niveaux and route.niveaux[precedent]
+        local gros = ("Niveau %d !"):format(nouveau)
+        if dureePrec then gros = gros .. ("  Niveau %d fait en %s"):format(precedent, duree(dureePrec)) end
+        if RaidNotice_AddMessage and RaidWarningFrame then
+            RaidNotice_AddMessage(RaidWarningFrame, gros, ChatTypeInfo["RAID_WARNING"] or { r = 1, g = 0.8, b = 0 })
+        else
+            UIErrorsFrame:AddMessage(gros, 1, 0.8, 0)
+        end
+        local detail = ("|cff00ff88[QueteRoute]|r Niveau %d atteint. Temps de jeu total : %s."):format(nouveau, duree(total))
+        if dureePrec then
+            detail = detail .. (" Niveau %d : %s"):format(precedent, duree(dureePrec))
+            if commu and commu.duree then
+                local ecart = dureePrec - commu.duree
+                detail = detail .. (" (communaute : %s, %s%s)"):format(duree(commu.duree),
+                    ecart <= 0 and "|cff00ff00" or "|cffff6060", (ecart <= 0 and "-" or "+") .. duree(math.abs(ecart)) .. "|r")
+            end
+            detail = detail .. "."
+        end
+        print(detail)
+    end)
+end
+
 local function surveillerObjectifs()
     for qid, etat in pairs(etatObjectifs) do
         if not questIndex(qid) then etatObjectifs[qid] = nil end
@@ -445,6 +519,8 @@ local function exporter()
             lignes[#lignes + 1] = table.concat({ "T", ev.q, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0, propre(ev.npc), propre(ev.n) }, ";")
         elseif ev.k == "O" then
             lignes[#lignes + 1] = table.concat({ "O", ev.q, ev.i or 0, ev.f or 0, ev.lvl or 0, ev.map or 0, ev.x or 0, ev.y or 0 }, ";")
+        elseif ev.k == "L" then
+            lignes[#lignes + 1] = table.concat({ "L", ev.lvl or 0, ev.total or 0, ev.d or 0 }, ";")
         end
     end
     return table.concat(lignes, "|")
@@ -492,6 +568,7 @@ ev:RegisterEvent("QUEST_ACCEPTED")
 ev:RegisterEvent("QUEST_TURNED_IN")
 ev:RegisterEvent("QUEST_LOG_UPDATE")
 ev:RegisterEvent("PLAYER_LEVEL_UP")
+ev:RegisterEvent("TIME_PLAYED_MSG")
 pcall(ev.RegisterEvent, ev, "QUEST_REMOVED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 ev:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -523,6 +600,12 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         cle = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
         wipe(etatObjectifs)
         attente = 1
+        if arg1 then C_Timer.After(5, initNiveau) end   -- arg1 = premiere connexion (pas un /reload)
+    elseif event == "TIME_PLAYED_MSG" then
+        reponseTempsJoue(arg1, arg2)
+    elseif event == "PLAYER_LEVEL_UP" then
+        if arg1 and cle then annoncerNiveau(tonumber(arg1)) end
+        attente = 0.5
     elseif event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
         local qid = GetQuestID and GetQuestID()
         if qid and qid > 0 and UnitExists("npc") and not UnitIsPlayer("npc") then
