@@ -119,6 +119,7 @@ end
 local PETITS_MOTS = { of = true, the = true, a = true, an = true, ["and"] = true, de = true, du = true, des = true,
     la = true, le = true, les = true, ["l'"] = true, ["d'"] = true }
 local function ressembleNomCreature(s)
+    if not s:find("%a") then return false end      -- "20" n'est pas un nom
     for mot in s:gmatch("%S+") do
         local lettre = mot:match("^[\"'%(%[]*(%a)")
         if lettre and lettre:match("%l") and not PETITS_MOTS[mot:lower()] then return false end
@@ -156,7 +157,8 @@ local function pnjDepuisObjectif(texte)
         local nom = texte:match(m)
         if nom then
             nom = strtrim(nom)
-            nom = nom:gsub("'s .*$", "")                -- "Alvarion Windfield's Story" -> "Alvarion Windfield"
+            -- "Alvarion Windfield's Story" -> "Alvarion Windfield", mais "Mankrik's Wife" reste entier
+            nom = nom:gsub("'s [Ss]tory$", ""):gsub("'s [Tt]ale$", ""):gsub("'s [Rr]eport$", "")
             nom = nom:gsub("%s+in .*$", ""):gsub("%s+at .*$", "")
             -- Seulement si c'est bien un nom propre ("Find Aamelia Windfield" oui, "Find the lost supplies" non)
             if nom ~= "" and ressembleNomCreature(nom) then return nom end
@@ -232,8 +234,8 @@ local function memoriser(qid, nomCode, role)
     QueteCiblesDB.appris[qid] = QueteCiblesDB.appris[qid] or {}
     local actuel = QueteCiblesDB.appris[qid][nom]
     if actuel == role then return false end
-    -- "rend" est l'info la plus utile : elle remplace "donne" ; sinon on garde la premiere
-    if actuel and not (role == "rend" and actuel == "donne") then return false end
+    -- "rend" remplace "donne" ; "mob" (attaquable, objectif tuer/objet) remplace "pnj" ; sinon on garde la premiere
+    if actuel and not (role == "rend" and actuel == "donne") and not (role == true and actuel == "pnj") then return false end
     QueteCiblesDB.appris[qid][nom] = role
     return true
 end
@@ -271,12 +273,22 @@ local function apprendre(unit)
     if not UnitExists(unit) or UnitIsPlayer(unit) then return end
     local nom = UnitName(unit)
     if not nom then return end
-    -- Hostile (rouge) = mob ; neutre ou amical = PNJ d'interaction
-    local reaction = UnitReaction(unit, "player") or 4
-    local role = (UnitCanAttack("player", unit) and reaction <= 3) and true or "pnj"
+    -- Non attaquable = PNJ. Attaquable (hostile OU neutre, ex. une bete jaune) = mob si la quete a un objectif
+    -- "tuer" ou "objet a ramasser" en cours, sinon PNJ d'interaction neutre (ex. un cultiste a qui parler)
+    local attaquable = UnitCanAttack("player", unit)
     local nouveau = false
     for _, ligne in ipairs(lignesTooltip(unit)) do
         local qid = titresQuetes[strtrim(ligne)]
+        local role = "pnj"
+        if qid and attaquable then
+            local objs = (C_QuestLog and C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(qid)) or {}
+            for _, o in ipairs(objs) do
+                if not o.finished then
+                    local n, _, _, kill = nomDepuisObjectif(o.text, o.type)
+                    if o.type == "item" or kill or (o.type == "monster" and n and ressembleNomCreature(n)) then role = true break end
+                end
+            end
+        end
         if qid and memoriser(qid, nom, role) then
             nouveau = true
             partager(qid, encoder(nom, role))
