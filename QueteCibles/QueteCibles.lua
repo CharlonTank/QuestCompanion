@@ -197,7 +197,8 @@ local function quetesJournal()
         for i = 1, C_QuestLog.GetNumQuestLogEntries() do
             local info = C_QuestLog.GetInfo(i)
             if info and not info.isHeader and info.questID then
-                local q = { id = info.questID, titre = info.title, complete = C_QuestLog.IsComplete(info.questID), objectifs = {} }
+                local q = { id = info.questID, titre = info.title, complete = C_QuestLog.IsComplete(info.questID), objectifs = {},
+                    niveau = info.difficultyLevel or info.level }
                 if GetQuestLogQuestText then
                     local ok, _, texte = pcall(GetQuestLogQuestText, i)
                     if ok and type(texte) == "string" then q.texte = texte end
@@ -212,9 +213,9 @@ local function quetesJournal()
         end
     elseif GetNumQuestLogEntries then
         for i = 1, GetNumQuestLogEntries() do
-            local t, _, _, isHeader, _, isComplete, _, qid = GetQuestLogTitle(i)
+            local t, lvl, _, isHeader, _, isComplete, _, qid = GetQuestLogTitle(i)
             if not isHeader then
-                local q = { id = qid or t, titre = t, complete = (isComplete == 1), objectifs = {} }
+                local q = { id = qid or t, titre = t, complete = (isComplete == 1), objectifs = {}, niveau = lvl }
                 if SelectQuestLogEntry and GetQuestLogQuestText then
                     SelectQuestLogEntry(i)
                     local _, texte = GetQuestLogQuestText()
@@ -539,11 +540,16 @@ local function collecter()
     end
 
     local pnjs = {}   -- ajoutes a la fin, apres les mobs
+    local niveauJoueur = UnitLevel("player")
     for _, q in ipairs(quetesJournal()) do
         titresQuetes[q.titre] = q.id
         local appris = QueteCiblesDB.appris[q.id] or {}
+        -- Quete orange ou rouge (3 niveaux au-dessus ou plus) : pas de cibles proposees (/cibles difficiles pour les voir)
+        local tropDure = not q.complete and not QueteCiblesDB.difficiles and q.niveau and (q.niveau - niveauJoueur) >= 3
 
-        if q.complete then
+        if tropDure then
+            -- rien
+        elseif q.complete then
             -- Quete terminee : le PNJ a qui la rendre (appris, sinon lu dans le texte, sinon celui qui l'a donnee)
             local nom, source = QueteCibles_PNJRendu(q.id, q.texte)
             if nom then
@@ -940,6 +946,10 @@ local function commande(msg)
     elseif action == "marque" then
         QueteCiblesDB.marque = (QueteCiblesDB.marque == false) and true or false
         print(PREFIX .. "Icones au-dessus des mobs : " .. (QueteCiblesDB.marque and "actives" or "coupees"))
+        reconstruire()
+    elseif action == "difficiles" then
+        QueteCiblesDB.difficiles = not QueteCiblesDB.difficiles
+        print(PREFIX .. "Cibles des quetes orange/rouges : " .. (QueteCiblesDB.difficiles and "affichees" or "masquees"))
         reconstruire()
     elseif action == "finis" then
         QueteCiblesDB.montrerFinis = not QueteCiblesDB.montrerFinis

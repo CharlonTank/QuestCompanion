@@ -31,6 +31,25 @@ local function objectifs(qid)
     return (C_QuestLog and C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(qid)) or {}
 end
 
+-- Niveau de la quete (couleur de difficulte) : orange a partir de +3, rouge a partir de +5 par rapport au joueur
+local function niveauQuete(qid)
+    local idx = questIndex(qid)
+    if not idx then return end
+    if C_QuestLog and C_QuestLog.GetInfo then
+        local info = C_QuestLog.GetInfo(idx)
+        return info and (info.difficultyLevel or info.level)
+    elseif GetQuestLogTitle then
+        local _, lvl = GetQuestLogTitle(idx)
+        return lvl
+    end
+end
+
+local function tropDure(qid)
+    if QueteRouteDB.difficiles then return false end
+    local lvl = niveauQuete(qid)
+    return lvl and (lvl - UnitLevel("player")) >= 3
+end
+
 -- ================================================================ Enregistrement du parcours
 -- Chaque evenement : { k = "A"/"O"/"T", q = questID, t = heure, lvl = niveau, map=, x=, y=, npc=, n = titre, i = index objectif }
 local cle                    -- "Perso-Royaume"
@@ -508,7 +527,9 @@ local function calculerEtapes()
                 vues[qid] = true
                 local q = route.quetes[qid] or { titre = info.title }
                 local e
-                if queteComplete(qid) then
+                if not queteComplete(qid) and tropDure(qid) then
+                    -- Quete orange ou rouge : on ne la propose pas (/route difficiles pour les inclure)
+                elseif queteComplete(qid) then
                     e = { type = "rendre", qid = qid, q = q, point = q.rendre or pointClient(qid) or q.prendre }
                     if e.point and not e.point.pnj then
                         local pnj
@@ -531,8 +552,10 @@ local function calculerEtapes()
                     e = { type = "faire", qid = qid, q = q, point = point or pointClient(qid) or (q.objectifs and q.objectifs[1]),
                         spotIndex = spotIndex, spotTotal = spotTotal }
                 end
-                e.dist = distanceDepuisJoueur(e.point)
-                locales[#locales + 1] = e
+                if e then
+                    e.dist = distanceDepuisJoueur(e.point)
+                    locales[#locales + 1] = e
+                end
             end
         end
     end
@@ -854,6 +877,10 @@ SlashCmdList["QUETEROUTE"] = function(msg)
         afficher()
     elseif msg == "stop" then
         destinationManuelle = nil
+        afficher()
+    elseif msg == "difficiles" then
+        QueteRouteDB.difficiles = not QueteRouteDB.difficiles
+        print(PREFIX .. "Quetes orange/rouges : " .. (QueteRouteDB.difficiles and "proposees" or "ignorees"))
         afficher()
     elseif msg:match("^rayon") then
         local n = tonumber(msg:match("%d+"))
