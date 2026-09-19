@@ -778,8 +778,10 @@ local function majBoutonTout()
     local lignes = { "/cleartarget" }
     for k, n in ipairs(noms) do
         lignes[#lignes + 1] = (k == 1) and ("/targetexact " .. n) or ("/targetexact [@target,noexists] " .. n)
-        if #table.concat(lignes, "\n") > 900 then break end
+        if #table.concat(lignes, "\n") > 880 then break end
     end
+    -- Crane sur la cible trouvee (pose par ton clic, donc autorise), comme pour les lignes de la liste
+    if peutMarquer() then lignes[#lignes + 1] = "/tm [exists,nodead] 8" end
     toutBouton:SetAttribute("macrotext", table.concat(lignes, "\n"))
 end
 
