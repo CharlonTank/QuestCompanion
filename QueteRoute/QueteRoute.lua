@@ -229,8 +229,15 @@ etapeTxt:SetPoint("RIGHT", -8, 0)
 etapeTxt:SetJustifyH("LEFT")
 etapeTxt:SetWordWrap(true)
 
+-- Case "a faire" : les actions concretes de l'etape (tuer X, ramasser Y sur Z, parler a W)
+local actionTxt = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+actionTxt:SetPoint("TOPLEFT", etapeTxt, "BOTTOMLEFT", 10, -3)
+actionTxt:SetPoint("RIGHT", -8, 0)
+actionTxt:SetJustifyH("LEFT")
+actionTxt:SetWordWrap(true)
+
 local suiteTxt = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-suiteTxt:SetPoint("TOPLEFT", etapeTxt, "BOTTOMLEFT", 0, -4)
+suiteTxt:SetPoint("TOPLEFT", actionTxt, "BOTTOMLEFT", -10, -5)
 suiteTxt:SetPoint("RIGHT", -8, 0)
 suiteTxt:SetJustifyH("LEFT")
 suiteTxt:SetWordWrap(true)
@@ -502,7 +509,47 @@ local function prochainSpot(qid, k, q, fait)
     return spots[best], n + 1, #spots
 end
 
-local function decrireEtape(e)
+-- Actions concretes d'une quete en cours : "Tuer X (3/8)", "Ramasser Y (0/7) sur Z", "Parler a W"
+local VERBES_KILL = { "slain", "killed", "exterminated", "destroyed", "defeated", "eliminated", "hunted", "culled" }
+local function actionsPour(qid)
+    local lignes = {}
+    local sources, pnjs = {}, {}
+    for _, r in ipairs((QueteCibles_LignesPour and QueteCibles_LignesPour(qid)) or {}) do
+        if r.genre == "mob" and r.detail and not r.fini then
+            local cible = r.detail:match("^Lache : (.+)$") or r.detail:match("^Compte pour : (.+)$")
+            if cible then sources[cible] = sources[cible] or {}; table.insert(sources[cible], r.nom) end
+        elseif r.genre == "pnj" then
+            pnjs[#pnjs + 1] = r.nom
+        end
+    end
+    for _, o in ipairs(objectifs(qid)) do
+        if not o.finished and o.text then
+            local fait, total, nom = o.text:match("^(%d+)%s*/%s*(%d+)%s+(.-)%s*$")
+            if not nom then nom, fait, total = o.text:match("^(.-):%s*(%d+)%s*/%s*(%d+)%s*$") end
+            local compte = fait and (" (" .. fait .. "/" .. total .. ")") or ""
+            if nom then
+                local l, kill = nom:lower(), false
+                for _, v in ipairs(VERBES_KILL) do
+                    if l:sub(-#v - 1) == " " .. v then nom = nom:sub(1, -#v - 2); kill = true break end
+                end
+                local s = sources[nom] and table.concat(sources[nom], ", ")
+                if kill then
+                    lignes[#lignes + 1] = "Tuer " .. nom .. compte .. (s and (" (= " .. s .. ")") or "")
+                elseif o.type == "item" then
+                    lignes[#lignes + 1] = "Ramasser " .. nom .. compte .. (s and (" sur " .. s) or "")
+                else
+                    lignes[#lignes + 1] = nom .. compte .. (s and (" : " .. s) or "")
+                end
+            else
+                lignes[#lignes + 1] = o.text
+            end
+        end
+    end
+    if #pnjs > 0 then lignes[#lignes + 1] = "Parler a / interagir : " .. table.concat(pnjs, ", ") end
+    return lignes
+end
+
+local function decrireEtape(e, court)
     local titre = (e.q and e.q.titre) or titreQuete(e.qid)
     local pnj = e.point and e.point.pnj
     if e.type == "prendre" then
@@ -511,9 +558,10 @@ local function decrireEtape(e)
     elseif e.type == "rendre" then
         return ("Rendre |cffffff00%s|r%s"):format(titre, pnj and (" a " .. pnj) or "")
     else
+        local etape = e.spotIndex and e.spotTotal and e.spotTotal > 1 and (" |cffa0d0ff(spot %d/%d)|r"):format(e.spotIndex, e.spotTotal) or ""
+        if court then return ("Faire |cffffff00%s|r%s"):format(titre, etape) end
         local reste = {}
         for _, o in ipairs(objectifs(e.qid)) do if not o.finished and o.text then reste[#reste + 1] = o.text end end
-        local etape = e.spotIndex and e.spotTotal and e.spotTotal > 1 and (" |cffa0d0ff(spot %d/%d)|r"):format(e.spotIndex, e.spotTotal) or ""
         return ("Faire |cffffff00%s|r : %s%s"):format(titre, table.concat(reste, ", "), etape)
     end
 end
@@ -672,7 +720,8 @@ local function afficher()
         if d and d < 15 then destinationManuelle = nil
         elseif QueteGPS and QueteGPS.Definir then
             QueteGPS.Definir(destinationManuelle.map, destinationManuelle.x, destinationManuelle.y, destinationManuelle.nom, ">")
-            etapeTxt:SetText("|cff00ff88Direction :|r " .. destinationManuelle.nom .. (d and (" (" .. math.floor(d) .. " yards)") or ""))
+            etapeTxt:SetText("|cff00ff88But :|r " .. destinationManuelle.nom .. (d and (" (" .. math.floor(d) .. " yards)") or ""))
+            actionTxt:SetText("")
             suiteTxt:SetText("Clique a nouveau le service pour annuler")
             frame:SetHeight(70)
             return
@@ -680,26 +729,38 @@ local function afficher()
     end
     local e = etapes[1]
     if not e then
-        etapeTxt:SetText("Rien a faire : prends des quetes ! Ton parcours est enregistre (/route export pour le partager).")
-        suiteTxt:SetText("")
+        etapeTxt:SetText("|cff00ff88But :|r rien pour l'instant, prends des quetes !")
+        actionTxt:SetText("")
+        suiteTxt:SetText("Ton parcours est enregistre pour la communaute.")
         if QueteGPS and QueteGPS.Effacer then QueteGPS.Effacer() end
         frame:SetHeight(70)
         return
     end
-    etapeTxt:SetText("1. " .. decrireEtape(e))
+    -- But : ou aller / quoi faire, en une ligne, avec la distance
+    etapeTxt:SetText("|cff00ff88But :|r " .. decrireEtape(e, true) .. (e.dist and (" |cffa0a0a0(%d yards)|r"):format(e.dist) or ""))
+    -- A faire : les actions concretes
+    local actions = {}
+    if e.type == "faire" then
+        actions = actionsPour(e.qid)
+    elseif e.type == "rendre" then
+        actions = { "Rendre la quete" .. (e.point and e.point.pnj and (" a " .. e.point.pnj) or "") }
+    elseif e.type == "prendre" then
+        actions = { "Prendre la quete" .. (e.point and e.point.pnj and (" chez " .. e.point.pnj) or "") }
+    end
+    for i, a in ipairs(actions) do actions[i] = "|cffffcc00-|r " .. a end
+    actionTxt:SetText(table.concat(actions, "\n"))
+    -- Ensuite
     local suite = {}
-    local d = detailsEtape(e)
-    if d ~= "" then suite[#suite + 1] = "|cffa0d0ff" .. d .. "|r" end
-    for i = 2, #etapes do suite[#suite + 1] = i .. ". " .. decrireEtape(etapes[i]) end
+    for i = 2, math.min(#etapes, 3) do suite[#suite + 1] = "Ensuite : " .. decrireEtape(etapes[i], true) end
     suiteTxt:SetText(table.concat(suite, "\n"))
     if QueteGPS and QueteGPS.Definir then
         if e.point and e.point.map then
-            QueteGPS.Definir(e.point.map, e.point.x, e.point.y, decrireEtape(e):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""), ">")
+            QueteGPS.Definir(e.point.map, e.point.x, e.point.y, decrireEtape(e, true):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""), ">")
         else
             QueteGPS.Effacer()
         end
     end
-    frame:SetHeight(50 + (#suite) * 14 + 26)
+    frame:SetHeight(44 + math.max(#actions, 1) * 13 + #suite * 13 + 30)
 end
 
 btnPasser:SetScript("OnClick", function()
@@ -802,12 +863,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         QueteRouteDB.journal = QueteRouteDB.journal or {}
         QueteRouteDB.passes = QueteRouteDB.passes or {}
         QueteRouteDB.ordrePasses = QueteRouteDB.ordrePasses or {}
-        if QueteRouteDB.shown == nil then
-            -- Avec RestedXP present, le panneau de route reste masque par defaut (/route pour l'afficher) ;
-            -- l'enregistrement du parcours pour la communaute continue dans tous les cas
-            local rxp = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides")) or (IsAddOnLoaded and IsAddOnLoaded("RXPGuides"))
-            QueteRouteDB.shown = not rxp
-        end
+        if QueteRouteDB.shown == nil then QueteRouteDB.shown = true end
         if QueteRouteDB.pos then
             frame:ClearAllPoints()
             frame:SetPoint(QueteRouteDB.pos[1], UIParent, QueteRouteDB.pos[2], QueteRouteDB.pos[3], QueteRouteDB.pos[4])

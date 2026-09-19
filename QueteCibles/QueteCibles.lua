@@ -644,6 +644,15 @@ function QueteCibles_QuetesAvecCiblesVisibles()
     if t and parNom[t] and not UnitIsDead("target") then res[parNom[t]] = true end
     return res
 end
+
+-- Lignes de cibles calculees pour une quete (mobs, mobs qui lachent un objet, PNJ) : pour le panneau de QueteRoute
+function QueteCibles_LignesPour(qid)
+    local res = {}
+    for _, c in ipairs(cibles) do
+        if c.qid == qid then res[#res + 1] = { nom = c.nom, genre = c.genre, detail = c.detail, fini = c.fini } end
+    end
+    return res
+end
 -- ================================================================ Visibilite (nameplates + cible actuelle)
 local function estVisible(nom)
     if UnitExists("target") and UnitName("target") == nom then return true end
