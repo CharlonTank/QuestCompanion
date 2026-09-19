@@ -198,7 +198,8 @@ local function quetesJournal()
             local info = C_QuestLog.GetInfo(i)
             if info and not info.isHeader and info.questID then
                 local q = { id = info.questID, titre = info.title, complete = C_QuestLog.IsComplete(info.questID), objectifs = {},
-                    niveau = info.difficultyLevel or info.level }
+                    niveau = info.difficultyLevel or info.level,
+                    suivie = (C_QuestLog.GetQuestWatchType and C_QuestLog.GetQuestWatchType(info.questID) ~= nil) or (IsQuestWatched and IsQuestWatched(i)) or false }
                 if GetQuestLogQuestText then
                     local ok, _, texte = pcall(GetQuestLogQuestText, i)
                     if ok and type(texte) == "string" then q.texte = texte end
@@ -215,7 +216,7 @@ local function quetesJournal()
         for i = 1, GetNumQuestLogEntries() do
             local t, lvl, _, isHeader, _, isComplete, _, qid = GetQuestLogTitle(i)
             if not isHeader then
-                local q = { id = qid or t, titre = t, complete = (isComplete == 1), objectifs = {}, niveau = lvl }
+                local q = { id = qid or t, titre = t, complete = (isComplete == 1), objectifs = {}, niveau = lvl, suivie = IsQuestWatched and IsQuestWatched(i) or false }
                 if SelectQuestLogEntry and GetQuestLogQuestText then
                     SelectQuestLogEntry(i)
                     local _, texte = GetQuestLogQuestText()
@@ -546,8 +547,9 @@ local function collecter()
         local debutC, debutP = #cibles, #pnjs   -- pour rattacher les cibles de cette quete a son questID
         local appris = QueteCiblesDB.appris[q.id] or {}
         -- Quete orange ou rouge (3 niveaux au-dessus ou plus) : pas de cibles proposees (/cibles difficiles pour les voir)
-        local seuil = QueteCiblesDB.difficiles and 99 or (QueteCiblesDB.orange and 5 or 3)   -- 3 = jaune seulement, 5 = + orange, 99 = tout
-        local tropDure = not q.complete and q.niveau and (q.niveau - niveauJoueur) >= seuil
+        -- Seules les quetes suivies dans le suivi de quetes sont proposees : retire le suivi d une quete pour l ignorer
+        -- (/cibles suivi pour proposer toutes les quetes du journal)
+        local tropDure = not QueteCiblesDB.toutesQuetes and not q.suivie
 
         if tropDure then
             -- rien
@@ -873,6 +875,8 @@ pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_REMOVED")
 pcall(ev.RegisterEvent, ev, "UNIT_QUEST_LOG_CHANGED")
 pcall(ev.RegisterEvent, ev, "UNIT_HEALTH")
+pcall(ev.RegisterEvent, ev, "QUEST_WATCH_LIST_CHANGED")
+pcall(ev.RegisterEvent, ev, "QUEST_WATCH_UPDATE")
 
 local attente = 0
 local derniereSynchro = 0
@@ -993,13 +997,9 @@ local function commande(msg)
         QueteCiblesDB.marque = (QueteCiblesDB.marque == false) and true or false
         print(PREFIX .. "Icones au-dessus des mobs : " .. (QueteCiblesDB.marque and "actives" or "coupees"))
         reconstruire()
-    elseif action == "orange" then
-        QueteCiblesDB.orange = not QueteCiblesDB.orange
-        print(PREFIX .. "Cibles des quetes orange : " .. (QueteCiblesDB.orange and "affichees" or "masquees") .. "  (/cibles difficiles pour les rouges)")
-        reconstruire()
-    elseif action == "difficiles" then
-        QueteCiblesDB.difficiles = not QueteCiblesDB.difficiles
-        print(PREFIX .. "Cibles des quetes rouges : " .. (QueteCiblesDB.difficiles and "affichees" or "masquees"))
+    elseif action == "suivi" then
+        QueteCiblesDB.toutesQuetes = not QueteCiblesDB.toutesQuetes
+        print(PREFIX .. (QueteCiblesDB.toutesQuetes and "Toutes les quetes du journal sont proposees" or "Seules les quetes suivies sont proposees"))
         reconstruire()
     elseif action == "finis" then
         QueteCiblesDB.montrerFinis = not QueteCiblesDB.montrerFinis
@@ -1009,7 +1009,7 @@ local function commande(msg)
         QueteCiblesDB.shown = not QueteCiblesDB.shown
         if QueteCiblesDB.shown then frame:Show() else frame:Hide() end
         print(PREFIX .. (QueteCiblesDB.shown and "affiche" or "masque")
-            .. "  (/cibles add|del|clear, finis, marque, oubli, export, import, sync, partage, stats, reset)")
+            .. "  (/cibles add|del|clear, suivi, finis, marque, oubli, export, import, sync, partage, stats, reset)")
     end
 end
 SLASH_QUETECIBLES1 = "/cibles"

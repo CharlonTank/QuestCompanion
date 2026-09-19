@@ -44,17 +44,16 @@ local function niveauQuete(qid)
     end
 end
 
--- Seuil d'ecart de niveau au-dela duquel une quete est ignoree : 3 = orange et rouge ignorees (defaut),
--- 5 = seules les rouges ignorees (/route orange), 99 = tout propose (/route difficiles)
-local function seuilNiveau()
-    if QueteRouteDB.difficiles then return 99 end
-    if QueteRouteDB.orange then return 5 end
-    return 3
+-- Seules les quetes suivies dans le suivi de quetes sont proposees : retire le suivi d'une quete pour l'ignorer.
+-- (/route suivi pour proposer toutes les quetes du journal)
+local function suivie(qid)
+    if C_QuestLog and C_QuestLog.GetQuestWatchType then return C_QuestLog.GetQuestWatchType(qid) ~= nil end
+    local idx = questIndex(qid)
+    return idx and IsQuestWatched and IsQuestWatched(idx) or false
 end
 
 local function tropDure(qid)
-    local lvl = niveauQuete(qid)
-    return lvl and (lvl - UnitLevel("player")) >= seuilNiveau()
+    return not QueteRouteDB.toutesQuetes and not suivie(qid)
 end
 
 -- ================================================================ Enregistrement du parcours
@@ -601,8 +600,8 @@ local function calculerEtapes()
                 vues[qid] = true
                 local q = route.quetes[qid] or { titre = info.title }
                 local e
-                if not queteComplete(qid) and tropDure(qid) then
-                    -- Quete orange ou rouge : on ne la propose pas (/route difficiles pour les inclure)
+                if tropDure(qid) then
+                    -- Quete non suivie dans le suivi de quetes : on ne la propose pas
                 elseif queteComplete(qid) then
                     e = { type = "rendre", qid = qid, q = q, point = q.rendre or pointClient(qid) or q.prendre }
                     if e.point and not e.point.pnj then
@@ -856,6 +855,7 @@ ev:RegisterEvent("TAXIMAP_OPENED")
 ev:RegisterEvent("GOSSIP_SHOW")
 ev:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
 pcall(ev.RegisterEvent, ev, "QUEST_REMOVED")
+pcall(ev.RegisterEvent, ev, "QUEST_WATCH_LIST_CHANGED")
 pcall(ev.RegisterEvent, ev, "NAME_PLATE_UNIT_ADDED")
 ev:RegisterEvent("PLAYER_TARGET_CHANGED")
 ev:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
@@ -923,7 +923,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
             etatObjectifs[arg1] = nil
             attente = 0.5
         end
-    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "PLAYER_LEVEL_UP"
+    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "PLAYER_LEVEL_UP" or event == "QUEST_WATCH_LIST_CHANGED"
         or event == "NAME_PLATE_UNIT_ADDED" or event == "PLAYER_TARGET_CHANGED" or event == "UPDATE_MOUSEOVER_UNIT"
         or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" then
         attente = 0.5
@@ -966,13 +966,9 @@ SlashCmdList["QUETEROUTE"] = function(msg)
     elseif msg == "stop" then
         destinationManuelle = nil
         afficher()
-    elseif msg == "difficiles" then
-        QueteRouteDB.difficiles = not QueteRouteDB.difficiles
-        print(PREFIX .. "Quetes rouges : " .. (QueteRouteDB.difficiles and "proposees" or "ignorees"))
-        afficher()
-    elseif msg == "orange" then
-        QueteRouteDB.orange = not QueteRouteDB.orange
-        print(PREFIX .. "Quetes orange : " .. (QueteRouteDB.orange and "proposees" or "ignorees") .. "  (/route difficiles pour les rouges)")
+    elseif msg == "suivi" then
+        QueteRouteDB.toutesQuetes = not QueteRouteDB.toutesQuetes
+        print(PREFIX .. (QueteRouteDB.toutesQuetes and "Toutes les quetes du journal sont proposees" or "Seules les quetes suivies sont proposees"))
         afficher()
     elseif msg:match("^rayon") then
         local n = tonumber(msg:match("%d+"))
