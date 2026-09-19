@@ -47,4 +47,4 @@ Installation, une seule fois, dans PowerShell :
 powershell -ExecutionPolicy Bypass -File "chemin\vers\companion\QuestCompanion-Sync.ps1" -Install
 ```
 
-Ça crée une tâche planifiée qui tourne toutes les 15 minutes. Pour l'envoi, il faut soit [GitHub CLI](https://cli.github.com) connecté (`gh auth login`), soit un jeton GitHub collé dans `%LOCALAPPDATA%\QuestCompanion\token.txt`. Sans ça, seule la réception fonctionne. Les addons écrivent leurs données au `/reload`, à la déconnexion ou à la fermeture du jeu, donc les envois suivent ce rythme. Journal : `%LOCALAPPDATA%\QuestCompanion\sync.log`.
+Ça crée une tâche planifiée qui tourne toutes les 15 minutes. Pour l'envoi, il faut soit [GitHub CLI](https://cli.github.com) connecté (`gh auth login`), soit un jeton GitHub (`gh auth token`) collé dans `companion	oken.txt` à côté du script. Sans ça, seule la réception fonctionne. Les addons écrivent leurs données au `/reload`, à la déconnexion ou à la fermeture du jeu, donc les envois suivent ce rythme. Journal : `%LOCALAPPDATA%\QuestCompanion\sync.log`.
