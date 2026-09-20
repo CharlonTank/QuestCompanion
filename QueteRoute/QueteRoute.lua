@@ -1,6 +1,15 @@
 local addonName, ns = ...
 local PREFIX = "|cff00ff88[QueteRoute]|r "
 
+-- Client Midnight (Forever) : certaines valeurs (noms d'unites, lignes d'infobulle) sont "secretes" et interdites
+-- aux addons dans certains contextes. On les ignore plutot que de planter.
+local function estSecret(v) return issecretvalue and issecretvalue(v) or false end
+local function nomUnite(unit)
+    local n = UnitName(unit)
+    if n == nil or estSecret(n) then return nil end
+    return n
+end
+
 -- ================================================================ Utilitaires
 local function position()
     local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
@@ -451,7 +460,7 @@ local function pnjVisibles()
     local t = {}
     local function voir(u)
         if UnitExists(u) and not UnitIsPlayer(u) and not UnitCanAttack("player", u) then
-            local n = UnitName(u); if n then t[n] = true end
+            local n = nomUnite(u); if n then t[n] = true end
         end
     end
     voir("target"); voir("mouseover")
@@ -888,7 +897,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
             QueteRouteDB.exports[cle] = exporter()
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
-        cle = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+        cle = (nomUnite("player") or "?") .. "-" .. (GetRealmName() or "?")
         wipe(etatObjectifs)
         attente = 1
         C_Timer.After(5, initNiveau)   -- a chaque chargement (connexion ou /reload) : ne note que si le niveau n'est pas deja connu
@@ -900,14 +909,14 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
         local qid = GetQuestID and GetQuestID()
         if qid and qid > 0 and UnitExists("npc") and not UnitIsPlayer("npc") then
-            pnjDialogue[qid] = UnitName("npc")
+            pnjDialogue[qid] = nomUnite("npc")
         end
     elseif event == "MERCHANT_SHOW" then
-        if CanMerchantRepair and CanMerchantRepair() and UnitExists("npc") then enregistrerService("R", UnitName("npc")) end
+        if CanMerchantRepair and CanMerchantRepair() and UnitExists("npc") then enregistrerService("R", nomUnite("npc")) end
     elseif event == "TAXIMAP_OPENED" then
-        if UnitExists("npc") then enregistrerService("V", UnitName("npc")) end
+        if UnitExists("npc") then enregistrerService("V", nomUnite("npc")) end
     elseif event == "GOSSIP_SHOW" then
-        if UnitExists("npc") and detecterAubergiste() then enregistrerService("A", UnitName("npc")) end
+        if UnitExists("npc") and detecterAubergiste() then enregistrerService("A", nomUnite("npc")) end
     elseif event == "UPDATE_INVENTORY_DURABILITY" then
         attente = 1
     elseif event == "QUEST_ACCEPTED" then

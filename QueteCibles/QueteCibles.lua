@@ -1,5 +1,14 @@
 local addonName, ns = ...
 local PREFIX = "|cffff8800[QueteCibles]|r "
+
+-- Client Midnight (Forever) : certaines valeurs (noms d'unites, lignes d'infobulle) sont "secretes" et interdites
+-- aux addons dans certains contextes. On les ignore plutot que de planter.
+local function estSecret(v) return issecretvalue and issecretvalue(v) or false end
+local function nomUnite(unit)
+    local n = UnitName(unit)
+    if n == nil or estSecret(n) then return nil end
+    return n
+end
 local PREFIXE_MSG = "QCibles"
 local LARGEUR, HAUTEUR_BTN, MAX_BTN = 210, 22, 16
 
@@ -275,7 +284,7 @@ local function lignesTooltip(unit)
         if ok and data and data.lines then
             for _, l in ipairs(data.lines) do
                 if not l.leftText and TooltipUtil and TooltipUtil.SurfaceArgs then pcall(TooltipUtil.SurfaceArgs, l) end
-                if l.leftText then t[#t + 1] = l.leftText end
+                if l.leftText and not estSecret(l.leftText) then t[#t + 1] = l.leftText end
             end
             return t
         end
@@ -285,7 +294,7 @@ local function lignesTooltip(unit)
     for i = 1, scan:NumLines() do
         local fs = _G["QueteCiblesScanTooltipTextLeft" .. i]
         local txt = fs and fs:GetText()
-        if txt then t[#t + 1] = txt end
+        if txt and not estSecret(txt) then t[#t + 1] = txt end
     end
     return t
 end
@@ -294,7 +303,7 @@ local titresQuetes = {}   -- titre -> questID (reconstruit a chaque collecte)
 
 local function apprendre(unit)
     if not UnitExists(unit) or UnitIsPlayer(unit) then return end
-    local nom = UnitName(unit)
+    local nom = nomUnite(unit)
     if not nom then return end
     -- Non attaquable = PNJ. Attaquable (hostile OU neutre, ex. une bete jaune) = mob si la quete a un objectif
     -- "tuer" ou "objet a ramasser" en cours, sinon PNJ d'interaction neutre (ex. un cultiste a qui parler)
@@ -325,7 +334,7 @@ local dernierPNJ = { nom = nil, t = 0 }   -- dernier PNJ avec qui on a interagi 
 
 -- Nom de ce avec quoi on interagit : PNJ, ou objet (armoire, coffre...) via le titre de la fenetre de dialogue
 local function nomInteraction()
-    if UnitExists("npc") and not UnitIsPlayer("npc") then return UnitName("npc") end
+    if UnitExists("npc") and not UnitIsPlayer("npc") then return nomUnite("npc") end
     local f = GossipFrame
     if f then
         -- Selon le client, GetTitleText renvoie la chaine ou l'objet FontString
@@ -333,7 +342,7 @@ local function nomInteraction()
             or (f.TitleContainer and f.TitleContainer.TitleText)
             or GossipFrameNpcNameText
         if type(t) == "table" and t.GetText then t = t:GetText() end
-        if type(t) == "string" and t ~= "" then return t end
+        if type(t) == "string" and t ~= "" and not estSecret(t) then return t end
     end
 end
 
@@ -347,7 +356,7 @@ local function apprendrePNJ(role)
     local qid = GetQuestID and GetQuestID()
     if not qid or qid == 0 then return end
     if not UnitExists("npc") or UnitIsPlayer("npc") then return end
-    local nom = UnitName("npc")
+    local nom = nomUnite("npc")
     if nom and memoriser(qid, nom, role) then
         partager(qid, encoder(nom, role))
         reconstruire()
@@ -416,7 +425,7 @@ local function envoyerTout(canal, cible)
 end
 
 local function recevoir(texte, expediteur)
-    local moi = UnitName("player")
+    local moi = nomUnite("player")
     if expediteur == moi or (expediteur and expediteur:match("^([^%-]+)") == moi) then return end
     local code, qid, noms = strsplit("\t", texte)
     if code == "S" then
@@ -652,11 +661,11 @@ function QueteCibles_QuetesAvecCiblesVisibles()
     if C_NamePlate and C_NamePlate.GetNamePlates then
         for _, np in ipairs(C_NamePlate.GetNamePlates()) do
             local u = np.namePlateUnitToken
-            local n = u and UnitName(u)
+            local n = u and nomUnite(u)
             if n and parNom[n] and not UnitIsDead(u) then res[parNom[n]] = true end
         end
     end
-    local t = UnitExists("target") and UnitName("target")
+    local t = UnitExists("target") and nomUnite("target")
     if t and parNom[t] and not UnitIsDead("target") then res[parNom[t]] = true end
     return res
 end
@@ -671,11 +680,11 @@ function QueteCibles_LignesPour(qid)
 end
 -- ================================================================ Visibilite (nameplates + cible actuelle)
 local function estVisible(nom)
-    if UnitExists("target") and UnitName("target") == nom then return true end
+    if UnitExists("target") and nomUnite("target") == nom then return true end
     if C_NamePlate and C_NamePlate.GetNamePlates then
         for _, np in ipairs(C_NamePlate.GetNamePlates()) do
             local u = np.namePlateUnitToken
-            if u and UnitName(u) == nom and not UnitIsDead(u) then return true end
+            if u and nomUnite(u) == nom and not UnitIsDead(u) then return true end
         end
     end
     return false
@@ -733,7 +742,7 @@ local function majIconePlate(unit, parNom)
         tex:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
         iconesPlates[plate] = tex
     end
-    local index = QueteCiblesDB.marque ~= false and not UnitIsDead(unit) and parNom[UnitName(unit) or ""]
+    local index = QueteCiblesDB.marque ~= false and not UnitIsDead(unit) and parNom[nomUnite(unit) or ""]
     if index then
         texcoordIcone(tex, index)
         tex:Show()
@@ -779,7 +788,7 @@ local function majBoutonTout()
     if C_NamePlate and C_NamePlate.GetNamePlates then
         for _, np in ipairs(C_NamePlate.GetNamePlates()) do
             local u = np.namePlateUnitToken
-            local n = u and UnitName(u)
+            local n = u and nomUnite(u)
             if n and index[n] and not UnitIsDead(u) then
                 local p = proximite(u, np)
                 if not score[n] or p < score[n] then score[n] = p end
