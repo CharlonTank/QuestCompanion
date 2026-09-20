@@ -648,6 +648,38 @@ local function collecter()
         for k = debutC + 1, #cibles do cibles[k].qid = cibles[k].qid or q.id end
         for k = debutP + 1, #pnjs do pnjs[k].qid = pnjs[k].qid or q.id end
     end
+    -- 6. Quetes a prendre connues de la communaute (QueteRoute) : PNJ donneur a moins de 300 yards ou en vue
+    if QueteRoute_PointsPrendre and C_Map and C_Map.GetBestMapForUnit then
+        local map = C_Map.GetBestMapForUnit("player")
+        local okp, ppos = pcall(C_Map.GetPlayerMapPosition, map, "player")
+        local pwx, pwy
+        if map and okp and ppos and C_Map.GetWorldPosFromMapPos then
+            local okw, _, w = pcall(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(ppos.x, ppos.y))
+            if okw and w then pwx, pwy = w.x, w.y end
+        end
+        local visibles = {}
+        if C_NamePlate and C_NamePlate.GetNamePlates then
+            for _, np in ipairs(C_NamePlate.GetNamePlates()) do
+                local u = np.namePlateUnitToken
+                local n = u and nomUnite(u)
+                if n then visibles[n] = true end
+            end
+        end
+        local okl, liste = pcall(QueteRoute_PointsPrendre)
+        for _, p in ipairs((okl and liste) or {}) do
+            if p.pnj and not vus[p.pnj] then
+                local proche = visibles[p.pnj]
+                if not proche and pwx and p.map and p.x then
+                    local okw, _, w = pcall(C_Map.GetWorldPosFromMapPos, p.map, CreateVector2D(p.x, p.y))
+                    if okw and w then proche = math.sqrt((w.x - pwx) ^ 2 + (w.y - pwy) ^ 2) < 300 end
+                end
+                if proche then
+                    pnjs[#pnjs + 1] = { nom = p.pnj, quete = p.titre, genre = "pnj", qid = p.qid, compte = "!",
+                        affichage = p.pnj .. " : " .. p.titre, detail = "Prendre la quete " .. p.titre }
+                end
+            end
+        end
+    end
     for _, p in ipairs(pnjs) do ajouter(p) end
 end
 

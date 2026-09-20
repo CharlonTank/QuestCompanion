@@ -706,7 +706,8 @@ function QueteRoute_PointsPrendre()
     for qid, q in pairs(route.quetes) do
         if q.prendre and q.prendre.map and not QueteRouteDB.passes[qid] and not queteDejaFaite(qid) and not questIndex(qid)
             and (q.niveau or 0) <= niveau + 2 then
-            res[#res + 1] = { map = q.prendre.map, x = q.prendre.x, y = q.prendre.y,
+            res[#res + 1] = { map = q.prendre.map, x = q.prendre.x, y = q.prendre.y, qid = qid,
+                titre = q.titre or titreQuete(qid), pnj = q.prendre.pnj,
                 nom = (q.titre or titreQuete(qid)) .. (q.prendre.pnj and (" (" .. q.prendre.pnj .. ")") or "") }
         end
     end

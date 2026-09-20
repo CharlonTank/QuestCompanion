@@ -4,6 +4,7 @@
 ## Author: harto
 ## Version: 1.1
 ## SavedVariables: QueteCiblesDB
+## OptionalDeps: QueteRoute
 
 Data.lua
 QueteCibles.lua
